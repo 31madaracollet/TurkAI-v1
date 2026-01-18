@@ -6,15 +6,15 @@ import sqlite3
 import hashlib
 
 # --- ⚙️ SİSTEM AYARLARI ---
-st.set_page_config(page_title="TürkAI v190", page_icon="🇹🇷", layout="wide")
+st.set_page_config(page_title="TürkAI v195", page_icon="🇹🇷", layout="wide")
 
-# --- 🎨 TASARIM (Kırmızı Balon & Beyaz Yazı) ---
+# --- 🎨 CANVA MODERN TEMASI (Kırmızı Balon + Beyaz Yazı) ---
 st.markdown("""
     <style>
     .stApp { background-color: #ffffff; }
     h1, h2, h3 { color: #cc0000 !important; font-family: 'Segoe UI', sans-serif !important; }
 
-    /* Kullanıcı Balonu - Beyaz Yazı Sabitlendi */
+    /* KULLANICI BALONU - BEYAZ YAZI KESİN ÇÖZÜM */
     .user-box {
         background: linear-gradient(135deg, #cc0000 0%, #ff4d4d 100%);
         color: #ffffff !important;
@@ -26,9 +26,9 @@ st.markdown("""
         box-shadow: 0px 4px 12px rgba(204, 0, 0, 0.15);
         font-weight: 500;
     }
-    .user-box b, .user-box strong { color: #ffffff !important; }
+    .user-box * { color: #ffffff !important; } /* İçindeki her şeyi beyaz yap */
 
-    /* AI Rapor Bloğu */
+    /* AI RAPOR BLOĞU */
     .ai-res-block {
         background: #fdfdfd;
         border-left: 8px solid #cc0000;
@@ -52,7 +52,7 @@ st.markdown("""
 
 # --- 💾 VERİTABANI ---
 def db_baslat():
-    conn = sqlite3.connect('turkai_v190.db', check_same_thread=False)
+    conn = sqlite3.connect('turkai_v195.db', check_same_thread=False)
     c = conn.cursor()
     c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS aramalar (kullanici TEXT, konu TEXT, icerik TEXT, tarih TEXT, motor TEXT)')
@@ -88,8 +88,8 @@ if not st.session_state.user:
                 if nu and np:
                     try:
                         c.execute("INSERT INTO users VALUES (?,?)", (nu, hashlib.sha256(np.encode()).hexdigest()))
-                        conn.commit(); st.success("Kaydoldun kanka! Giriş yapabilirsin.")
-                    except: st.error("Bu kullanıcı adı alınmış.")
+                        conn.commit(); st.success("Kaydoldun kanka! Giriş yap.")
+                    except: st.error("Bu isim dolu kanka.")
     st.stop()
 
 # --- 🚀 PANEL ---
@@ -114,7 +114,6 @@ if sorgu:
     st.session_state.son_sorgu = sorgu
     h = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36'}
     
-    # --- V1: Wikipedia (Senin Orijinal Kodun) ---
     if m_secim == "V1 (Wikipedia)":
         try:
             r = requests.get(f"https://tr.wikipedia.org/w/api.php?action=query&list=search&srsearch={sorgu}&format=json", headers=h).json()
@@ -122,36 +121,35 @@ if sorgu:
             soup = BeautifulSoup(requests.get(f"https://tr.wikipedia.org/wiki/{head.replace(' ', '_')}", headers=h).text, 'html.parser')
             info = "\n\n".join([p.get_text() for p in soup.find_all('p') if len(p.get_text()) > 60][:5])
             st.session_state.bilgi, st.session_state.konu = info, head
-        except: st.session_state.bilgi = "Wikipedia'da buna dair bir kayıt bulamadım kanka."
+        except: st.session_state.bilgi = "Wikipedia kaydı yok kanka."
 
-    # --- V2: Global (Yedekli ve Sağlam) ---
     elif m_secim == "V2 (Global/Sözlük)":
         try:
-            # 1. Aşama: DuckDuckGo API
-            r = requests.get(f"https://api.duckduckgo.com/?q={sorgu}&format=json&no_html=1", headers=h).json()
-            bilgi = r.get("AbstractText")
+            # V2 GÜÇLENDİRİLMİŞ GLOBAL ARAMA
+            search_url = f"https://duckduckgo.com/html/?q={sorgu}"
+            r_html = requests.get(search_url, headers=h)
+            soup = BeautifulSoup(r_html.text, 'html.parser')
             
-            # 2. Aşama: Eğer boşsa HTML Scraping (Orijinal Mantık)
-            if not bilgi:
-                r_html = requests.get(f"https://duckduckgo.com/html/?q={sorgu}", headers=h)
-                soup = BeautifulSoup(r_html.text, 'html.parser')
-                snippet = soup.find('a', class_='result__snippet')
-                if snippet:
-                    bilgi = snippet.get_text()
+            # 1. Deneme: Snippet ara
+            snippet = soup.find('a', class_='result__snippet')
+            if snippet:
+                bilgi = snippet.get_text()
+            else:
+                # 2. Deneme: Herhangi bir sonuç paragrafı ara
+                snippet = soup.find('div', class_='result__snippet')
+                bilgi = snippet.get_text() if snippet else None
             
-            # 3. Aşama: Hala boşsa Alternatif Global Arama
             if not bilgi:
-                bilgi = "Global kaynaklarda bu terim için net bir özet bulunamadı. Lütfen daha genel bir kelime ile dene kanka."
+                bilgi = "Global kaynaklarda bu terim için doğrudan bir özet bulunamadı. Aramayı daha basit yap kanka."
             
             st.session_state.bilgi, st.session_state.konu = bilgi, sorgu.title()
-        except: st.session_state.bilgi = "Global servislere şu an ulaşılamıyor, internetini kontrol et kanka."
+        except: st.session_state.bilgi = "Global motor şu an meşgul kanka."
 
-    # --- V3: Hesap Makinesi ---
     elif m_secim == "V3 (Hesap Makinesi)":
         try:
             temiz = "".join(c for c in sorgu if c in "0123456789+-*/(). ")
             st.session_state.bilgi, st.session_state.konu = f"Matematiksel Analiz: {eval(temiz, {'__builtins__': {}}, {})}", "Matematik"
-        except: st.session_state.bilgi = "Hesaplama yapılamadı."
+        except: st.session_state.bilgi = "Hesap yapılamadı."
 
     if st.session_state.bilgi:
         c.execute("INSERT INTO aramalar VALUES (?,?,?,?,?)", (st.session_state.user, st.session_state.konu, st.session_state.bilgi, str(datetime.datetime.now()), m_secim))
