@@ -1,3 +1,6 @@
+# v67.1 - GitHub Pages Uyum Yaması
+st.sidebar.info(f"🚀 Sunucu: GitHub Pages üzerinden bağlı")
+st.sidebar.caption("Versiyon: Pro v67.1 | Statü: Aktif")
 import streamlit as st
 import requests
 from bs4 import BeautifulSoup
@@ -160,6 +163,7 @@ if msg:
                     st.rerun()
             st.warning("Sonuç bulunamadı.")
         except: st.error("Sunucu hatası!")
+
 
 
 
