@@ -5,15 +5,15 @@ import re
 from fpdf import FPDF
 import datetime
 import sqlite3
+import time
 
 # --- ⚙️ SİSTEM AYARLARI ---
 st.set_page_config(page_title="TürkAI Pro", page_icon="🇹🇷", layout="wide")
 
-# --- 🛡️ GÜVENLİK & KARAKTER SİGORTASI (EN İYİ HALİ) ---
+# --- 🛡️ GÜVENLİK & KARAKTER SİGORTASI ---
 KARA_LISTE = ["amk", "aq", "pic", "sik", "yarrak", "got", "meme", "dassak", "ibne", "kahpe", "oros", "ananı"]
 
 def karakter_sigortasi(metin):
-    """Bozuk karakterleri siler, okunabilirliği korur."""
     if not metin: return ""
     metin = metin.replace('\xa0', ' ').replace('\u200b', '').replace('\u200e', '').replace('\u200f', '')
     metin = re.sub(r'\[\d+\]', '', metin)
@@ -21,7 +21,6 @@ def karakter_sigortasi(metin):
     return re.sub(r'\s+', ' ', metin).strip()
 
 def kalkan(metin):
-    """Gelişmiş Küfür Filtresi."""
     t = metin.lower()
     tr_map = str.maketrans("şçğüöıİ", "scguoiI")
     t = t.translate(tr_map)
@@ -29,9 +28,9 @@ def kalkan(metin):
     t = re.sub(r'[^a-z]', '', t)
     return not any(kelime in t for kelime in KARA_LISTE)
 
-# --- 💾 VERİTABANI MOTORU ---
+# --- 💾 VERİTABANI ---
 def get_db():
-    return sqlite3.connect('turkai_v50.db', check_same_thread=False)
+    return sqlite3.connect('turkai_v52.db', check_same_thread=False)
 
 def db_baslat():
     conn = get_db(); c = conn.cursor()
@@ -46,7 +45,7 @@ if "giris_yapildi" not in st.session_state: st.session_state.giris_yapildi = Fal
 if "analiz_sonucu" not in st.session_state: st.session_state.analiz_sonucu = None
 if "su_anki_konu" not in st.session_state: st.session_state.su_anki_konu = ""
 
-# --- 🎨 ARAYÜZ TASARIMI ---
+# --- 🎨 ARAYÜZ ---
 st.markdown("""
     <style>
     .stApp { background:#fff; }
@@ -56,9 +55,8 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 🚪 GİRİŞ EKRANI ---
 if not st.session_state.giris_yapildi:
-    st.markdown("<h1 class='header'>🇹🇷 TÜRKAI v50.0</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='header'>🇹🇷 TÜRKAI v52.0</h1>", unsafe_allow_html=True)
     c1, c2, c3 = st.columns([1, 1.2, 1])
     with c2:
         u = st.text_input("🤖 Adınız nedir?")
@@ -69,21 +67,16 @@ if not st.session_state.giris_yapildi:
             else: st.error("⚠️ Uygunsuz isim!")
     st.stop()
 
-# --- 🚀 YAN PANEL (GEÇMİŞ & YENİ SOHBET) ---
+# --- 🚀 YAN PANEL ---
 with st.sidebar:
     st.markdown(f"### 👤 {st.session_state.user}")
-    
-    # ✨ YENİ SOHBET BUTONU
     if st.button("➕ Yeni Sohbet Oluştur", use_container_width=True):
         st.session_state.analiz_sonucu = None
         st.session_state.su_anki_konu = ""
         st.rerun()
-        
-    if st.button("🔴 Çıkış"):
-        st.session_state.clear(); st.rerun()
-        
+    if st.button("🔴 Çıkış"): st.session_state.clear(); st.rerun()
     st.divider()
-    st.markdown("📂 **Sohbet Geçmişi**")
+    st.markdown("📂 **Geçmiş**")
     conn = get_db(); c = conn.cursor()
     c.execute("SELECT konu, icerik, tarih FROM aramalar WHERE kullanici=? ORDER BY tarih DESC LIMIT 15", (st.session_state.user,))
     for konu, icerik, tarih in c.fetchall():
@@ -91,54 +84,63 @@ with st.sidebar:
             st.session_state.su_anki_konu, st.session_state.analiz_sonucu = konu, icerik
             st.rerun()
 
-st.markdown("<h2 class='header'>TürkAI Bilgi ve Hesap Merkezi</h2>", unsafe_allow_html=True)
+st.markdown("<h2 class='header'>TürkAI Araştırma ve Analiz</h2>", unsafe_allow_html=True)
 
-# --- 🖥️ SONUÇ EKRANI ---
 if st.session_state.analiz_sonucu:
     if "🔢" in st.session_state.analiz_sonucu:
         st.markdown(f'<div class="math-karti">{st.session_state.analiz_sonucu}</div>', unsafe_allow_html=True)
     else:
         st.markdown(f'<div class="sonuc-karti"><h3>🔍 {st.session_state.su_anki_konu}</h3>{st.session_state.analiz_sonucu.replace(chr(10), "<br>")}</div>', unsafe_allow_html=True)
 
-# --- 📥 GİRİŞ (HESAP MAKİNESİ + ARAŞTIRMA) ---
-msg = st.chat_input("Bir şey sorun veya hesaplama yapın (Örn: 55*4)...")
+# --- 📥 GİRİŞ MOTORU ---
+msg = st.chat_input("Bir konu yazın veya hesap yapın...")
 
 if msg:
-    if not kalkan(msg):
-        st.error("🚨 Uygunsuz içerik engellendi!")
+    if not kalkan(msg): st.error("🚨 Uygunsuz içerik!")
     else:
-        # 1. HESAP MAKİNESİ (Geri Geldi!)
+        # 1. HESAP MAKİNESİ (SABİT)
         math_match = re.search(r"(\d+[\s\+\-\*\/\(\)\.]+\d+)", msg)
         if math_match:
             try:
                 islem = math_match.group(0)
-                # Güvenli eval
                 sonuc = eval(islem, {"__builtins__": {}}, {})
                 res = f"🔢 Matematiksel Sonuç\n\nİşlem: {islem}\n✅ Cevap: {sonuc}"
-                st.session_state.analiz_sonucu, st.session_state.su_anki_konu = res, "Hesaplama"
-                st.rerun()
+                st.session_state.analiz_sonucu, st.session_state.su_anki_konu = res, "Hesaplama"; st.rerun()
             except: pass
 
-        # 2. ARAŞTIRMA MOTORU
-        with st.spinner("🔎 Analiz ediliyor..."):
+        # 2. ARAŞTIRMA MOTORU (SUNUCU HATASI İÇİN GÜÇLENDİRİLDİ)
+        with st.spinner("🔎 Wikipedia taranıyor..."):
             try:
-                h = {'User-Agent': 'Mozilla/5.0'}
+                # Gerçek tarayıcı taklidi (Anti-Blok)
+                h = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'}
+                
+                # Arama API
                 s_url = f"https://tr.wikipedia.org/w/api.php?action=query&list=search&srsearch={msg}&format=json"
-                r = requests.get(s_url, headers=h, timeout=10).json()
-                if r.get('query', {}).get('search'):
-                    baslik = r['query']['search'][0]['title']
-                    wiki = requests.get(f"https://tr.wikipedia.org/wiki/{baslik.replace(' ', '_')}", headers=h, timeout=10)
-                    soup = BeautifulSoup(wiki.text, 'html.parser')
-                    for j in soup(["sup", "table", "style", "script"]): j.decompose()
-                    txt = [p.get_text().strip() for p in soup.find_all('p') if len(p.get_text()) > 60]
-                    if txt:
-                        bilgi = karakter_sigortasi("\n\n".join(txt[:6]))
-                        su_an = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
-                        conn = get_db(); c = conn.cursor()
-                        c.execute("INSERT INTO aramalar VALUES (?,?,?,?)", (st.session_state.user, baslik, bilgi, su_an))
-                        conn.commit()
-                        st.session_state.analiz_sonucu, st.session_state.su_anki_konu = bilgi, baslik
-                        st.rerun()
-                st.warning("Sonuç bulunamadı.")
-            except: st.error("🚨 Sunucu hatası!")
-
+                r_obj = requests.get(s_url, headers=h, timeout=10)
+                
+                if r_obj.status_code == 200:
+                    r = r_obj.json()
+                    if r.get('query', {}).get('search'):
+                        baslik = r['query']['search'][0]['title']
+                        
+                        # Sayfa Verisi Çekme
+                        wiki = requests.get(f"https://tr.wikipedia.org/wiki/{baslik.replace(' ', '_')}", headers=h, timeout=10)
+                        
+                        if wiki.status_code == 200:
+                            soup = BeautifulSoup(wiki.text, 'html.parser')
+                            for j in soup(["sup", "table", "style", "script", "link"]): j.decompose()
+                            txt = [p.get_text().strip() for p in soup.find_all('p') if len(p.get_text()) > 60]
+                            
+                            if txt:
+                                bilgi = karakter_sigortasi("\n\n".join(txt[:7]))
+                                su_an = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
+                                conn = get_db(); c = conn.cursor()
+                                c.execute("INSERT INTO aramalar VALUES (?,?,?,?)", (st.session_state.user, baslik, bilgi, su_an))
+                                conn.commit()
+                                st.session_state.analiz_sonucu, st.session_state.su_anki_konu = bilgi, baslik
+                                st.rerun()
+                        else: st.error("🌐 Wikipedia sayfa içeriği vermedi.")
+                    else: st.warning("😔 Aradığınız kelime bulunamadı.")
+                else: st.error(f"🌐 Sunucu Hatası (Kod: {r_obj.status_code})")
+            except Exception as e:
+                st.error("🚨 Bağlantı zaman aşımına uğradı, lütfen tekrar deneyin.")
