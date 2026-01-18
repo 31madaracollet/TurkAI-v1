@@ -1,14 +1,6 @@
 streamlit
 requests
 beautifulsoup4
-fuzzywuzzy
-python-Levenshtein
-pandas
-fpdf2
-PyPDF2
-extra-streamlit-components
-BeautifulSoup
-googlesearch-phyton
 
 
 
