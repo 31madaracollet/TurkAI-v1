@@ -58,10 +58,24 @@ def gecmis_getir(user):
 
 db_baslat()
 
-# --- 🧠 MATEMATİK VE GÜVENLİK MOTORU ---
-def matematik_mi(metin):
-    # Eğer metin sadece sayılar ve matematiksel semboller içeriyorsa True döner
-    return bool(re.match(r'^[0-9+\-*/().\s]+$', metin))
+# --- 🧠 MATEMATİK VE AYIKLAMA MOTORU ---
+def matematiksel_islem_bul(metin):
+    # Metni küçük harfe çevir ve 'hesapla' kelimesini temizle
+    temiz_metin = metin.lower().replace("hesapla", "").strip()
+    
+    # Cümle içindeki matematiksel kalıpları bul (Sayılar ve +, -, *, /, (, ) sembolleri)
+    # En az 3 karakterli bir matematiksel dizi arar (Örn: 2+2)
+    bulunan = re.search(r"(\d+[\s\+\-\*\/\(\)\.]+\d+)", temiz_metin)
+    
+    if bulunan:
+        islem = bulunan.group(0).strip()
+        try:
+            # İşlemi güvenli bir şekilde hesapla
+            sonuc = eval(islem)
+            return True, islem, sonuc
+        except:
+            return False, None, None
+    return False, None, None
 
 KARA_LISTE = ["amk", "aq", "pic", "sik", "yarrak", "got", "meme", "dassak", "ibne", "kahpe", "serefsiz", "orospu"]
 
@@ -83,8 +97,8 @@ st.markdown("""
         box-shadow: 0 2px 4px rgba(0,0,0,0.05); color: #111827;
     }
     .math-karti {
-        background-color: #EEF2FF; padding: 20px; border-radius: 12px;
-        border: 2px solid #6366F1; color: #4338CA; font-size: 1.5rem;
+        background-color: #F0FDF4; padding: 25px; border-radius: 15px;
+        border: 2px solid #22C55E; color: #166534; font-size: 1.4rem;
         text-align: center; font-weight: bold; margin-bottom: 20px;
     }
     h1 { color: #DC2626; text-align: center; }
@@ -117,8 +131,9 @@ if not st.session_state.giris_yapildi:
             nu = st.text_input("Yeni Kullanıcı", key="r_u")
             np = st.text_input("Yeni Şifre", type="password", key="r_p")
             if st.button("Kayıt Ol", use_container_width=True):
-                if yeni_kayit(nu, np): st.success("Tamamdır! Giriş yapabilirsin.")
-                else: st.error("Kullanıcı adı dolu.")
+                if len(nu) > 2 and len(np) > 3:
+                    if yeni_kayit(nu, np): st.success("Tamamdır! Giriş yapabilirsin.")
+                    else: st.error("Kullanıcı adı dolu.")
     st.stop()
 
 # --- 🚀 ANA PANEL ---
@@ -133,41 +148,40 @@ with st.sidebar:
             st.session_state.analiz_sonucu = icerik_metni
             st.rerun()
     
+    st.divider()
     if st.button("Çıkış Yap", use_container_width=True):
         st.session_state.giris_yapildi = False
         st.rerun()
 
 st.title("TürkAI Bilgi Merkezi")
 
-# ANALİZ VEYA MATEMATİK GÖSTERİMİ
+# --- SONUÇ GÖSTERİMİ ---
 if st.session_state.analiz_sonucu:
-    # Eğer sonuç bir matematik işlemiyse farklı kutuda göster
-    if "Sonuç =" in st.session_state.analiz_sonucu:
+    if "🔢 Matematiksel Sonuç" in st.session_state.analiz_sonucu:
         st.markdown(f'<div class="math-karti">{st.session_state.analiz_sonucu}</div>', unsafe_allow_html=True)
     else:
         st.markdown(f'<div class="sonuc-karti"><h3>📌 {st.session_state.su_anki_konu}</h3>{st.session_state.analiz_sonucu.replace(chr(10), "<br>")}</div>', unsafe_allow_html=True)
 
 # --- 📥 AKILLI ARAMA BARI ---
-sorgu = st.chat_input("İşlem yazın (Örn: 25*4) veya konu aratın...")
+st.caption("💡 İpucu: İşlem yapmak için başına 'hesapla' yazabilir veya direkt '10+5' gibi sorabilirsiniz.")
+sorgu = st.chat_input("Neyi araştırmak istersiniz?")
 
 if sorgu:
     if not guvenli_mi(sorgu):
         st.warning("⚠️ Lütfen profesyonel bir dil kullanın.")
     else:
-        # 1. ÖNCE MATEMATİK Mİ DİYE BAK
-        if matematik_mi(sorgu):
-            try:
-                hesap = eval(sorgu)
-                sonuc_metni = f"🔢 İşlem: {sorgu} \n\n✅ Sonuç = {hesap}"
-                st.session_state.analiz_sonucu = sonuc_metni
-                st.session_state.su_anki_konu = "Hesaplama"
-                st.rerun()
-            except:
-                st.error("Hatalı matematiksel işlem!")
+        # 1. ÖNCE İÇİNDE MATEMATİK VAR MI DİYE BAK
+        is_math, islem, sonuc = matematiksel_islem_bul(sorgu)
+        
+        if is_math:
+            sonuc_metni = f"🔢 Matematiksel Sonuç \n\n İşlem: {islem} \n\n ✅ Cevap: {sonuc}"
+            st.session_state.analiz_sonucu = sonuc_metni
+            st.session_state.su_anki_konu = "Hesaplama"
+            st.rerun()
         
         # 2. DEĞİLSE WIKIPEDIA'YA GİT
         else:
-            with st.spinner("Analiz ediliyor..."):
+            with st.spinner("Bilgi havuzu taranıyor..."):
                 url = f"https://tr.wikipedia.org/wiki/{sorgu.strip().capitalize().replace(' ', '_')}"
                 r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
                 if r.status_code == 200:
@@ -179,4 +193,4 @@ if sorgu:
                         st.session_state.analiz_sonucu = ozet
                         st.session_state.su_anki_konu = sorgu
                         st.rerun()
-                else: st.error("Sonuç bulunamadı.")
+                else: st.error("Üzgünüm, bu konu hakkında bilgi bulamadım.")
