@@ -5,7 +5,7 @@ from fuzzywuzzy import fuzz
 from bs4 import BeautifulSoup
 
 # --- 🔑 ANAHTARLARIN ---
-SERVICE_ID = "service_t94tzf3"
+SERVICE_ID = "service_cphuc5v"
 TEMPLATE_ID = "template_icpc1mx"
 PUBLIC_KEY = "WSbTebVBao1cHy4dT" # <--- Kendi anahtarını buraya yaz kanka!
 
@@ -110,3 +110,4 @@ if soru:
             st.session_state.chat.append({"q": soru, "a": res_text})
             st.rerun()
         except: st.error("Hata oluştu.")
+
