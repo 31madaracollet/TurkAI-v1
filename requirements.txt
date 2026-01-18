@@ -7,4 +7,5 @@ python-Levenshtein
 pandas
 fpdf
 PyPDF2
+extra-streamlit-components
 
