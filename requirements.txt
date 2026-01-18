@@ -8,7 +8,7 @@ fpdf2
 PyPDF2
 extra-streamlit-components
 BeautifulSoup
-streamlit
+googlesearch-phyton
 
 
 
