@@ -124,7 +124,8 @@ if st.session_state.get("analiz_sonucu"):
         st.markdown(f'<div class="sonuc-karti"><h3>🔍 {st.session_state.su_anki_konu}</h3>{st.session_state.analiz_sonucu.replace(chr(10), "<br>")}<br><br><hr><b>🔗 Kaynak:</b> <a href="{st.session_state.su_anki_kaynak}" target="_blank">Wikipedia</a></div>', unsafe_allow_html=True)
 
 # --- 📥 GİRİŞ (HESAPLAMA ÖNCELİKLİ) ---
-st.markdown("<div class='not-kutusu'>💡 İşlem yapacaksanız başına hesapla koyunuz ve çarpma için (*) veya (x) kullanın. </div>", unsafe_allow_html=True)
+st.markdown("<div class='not-kutusu'>💡 İşlem yapacaksanız başına hesapla koyunuz ve çarpma için (*) veya (x) kullanın.Sorucağınız şeyin sonuna noktalama işareti
+koymayınız.(Örn:Türk kimdir?❌ Türk✅</div>", unsafe_allow_html=True)
 msg = st.chat_input("Buraya yazın...")
 
 if msg:
@@ -160,4 +161,5 @@ if msg:
                     st.rerun()
             st.warning("Sonuç bulunamadı.")
         except: st.error("Sunucu hatası!")
+
 
