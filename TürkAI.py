@@ -1,76 +1,62 @@
 import streamlit as st
 import requests
 from bs4 import BeautifulSoup
-from fuzzywuzzy import fuzz # Benzerlik algılayıcı
 import random
 
-# --- SİSTEM AYARLARI ---
-st.set_page_config(page_title="TürkAI v60.0", layout="wide")
+# --- GÜVENLİK PROTOKOLÜ ---
+KARA_LISTE = [
+    "amk", "aq", "piç", "oç", "sg", "sik", "yarrak", "göt", "meme", "daşşak",
+    "ibne", "kahpe", "yavşak", "gerizekalı", "salak", "aptal", "it", "köpek",
+    "şerefsiz", "namussuz", "pezevenk", "fahişe", "mal", "oros", "ananı"
+]
 
-# --- HAFIZA (SESSION STATE) KURULUMU ---
-if "mesajlar" not in st.session_state:
-    st.session_state.mesajlar = [] # Sohbet geçmişi
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-
-# --- GELİŞMİŞ GÜVENLİK (KELİME BENZERLİĞİ) ---
-KARA_LISTE = ["küfür1", "küfür2", "argo1"] # Burayı sen doldurursun kanka
-
-def akilli_filtre(metin):
-    kelimeler = metin.lower().split()
-    for kelime in kelimeler:
-        for yasak in KARA_LISTE:
-            # Benzerlik oranı %80 üzerindeyse yakala
-            if fuzz.ratio(kelime, yasak) > 80:
-                return False
+def temiz_mi(metin):
+    metin_kucuk = metin.lower()
+    for kelime in KARA_LISTE:
+        if kelime in metin_kucuk:
+            return False
     return True
 
-# --- GİRİŞ SİSTEMİ ---
-if not st.session_state.logged_in:
-    st.title("🔐 TürkAI Giriş")
-    user_mail = st.text_input("E-posta:")
-    if st.button("Sisteme Gir"):
-        if "@" in user_mail:
-            st.session_state.logged_in = True
-            st.session_state.user = user_mail
-            st.rerun()
-    st.stop()
+# --- WEB ARAYÜZÜ AYARLARI ---
+st.set_page_config(page_title="TürkAI v45.0 - Pro", page_icon="🇹🇷")
+st.title("🇹🇷 TürkAI v45.0 - Güvenli Analiz Hattı")
 
-# --- ANA ARAYÜZ ---
-st.sidebar.title("🕒 Sohbet Geçmişi")
-for m in st.session_state.mesajlar:
-    st.sidebar.write(f"🗨️ {m['soru'][:20]}...")
+hitaplar = ["Değerli Dostum", "Sayın Kullanıcı", "Kıymetli Arkadaşım"]
+hitap = random.choice(hitaplar)
 
-st.title("🇹🇷 TürkAI v60.0 - Akıllı Analiz Paneli")
+# --- ANA PANEL ---
+konu = st.text_input("Araştırmak istediğiniz konuyu giriniz:", placeholder="Örn: Uzay Teknolojileri")
 
-# --- SOHBET AKIŞI ---
-with st.container():
-    for m in st.session_state.mesajlar:
-        with st.chat_message("user"): st.write(m["soru"])
-        with st.chat_message("assistant"): st.write(m["cevap"])
-
-# --- GİRİŞ ALANI ---
-prompt = st.chat_input("Bir konu yazın veya soru sorun...")
-
-if prompt:
-    if not akilli_filtre(prompt):
-        st.error("⚠️ Hop! Kelime benzerliği üzerinden uygunsuz içerik tespit edildi. Lütfen üsluba dikkat.")
+if st.button("Analizi Başlat"):
+    if konu:
+        if not temiz_mi(konu):
+            st.error("⚠️ TürkAI: Uygunsuz içerik veya üslup tespit edildi. Analiz iptal edildi.")
+        else:
+            with st.spinner(f"🔎 {hitap}, kaynaklar taranıyor..."):
+                url = f"https://tr.wikipedia.org/wiki/{konu.replace(' ', '_')}"
+                try:
+                    r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
+                    if r.status_code == 200:
+                        soup = BeautifulSoup(r.text, 'html.parser')
+                        paragraflar = [p.get_text().strip() for p in soup.find_all('p') if len(p.get_text()) > 60]
+                        
+                        if paragraflar:
+                            st.success(f"✅ {hitap}, veriler başarıyla analiz edildi.")
+                            st.write("### 📖 Analiz Sonucu:")
+                            st.info(paragraflar[0]) # İlk paragrafı göster
+                            if len(paragraflar) > 1:
+                                with st.expander("Detaylı Bilgiyi Gör"):
+                                    st.write(" ".join(paragraflar[1:4]))
+                        else:
+                            st.warning("⚠️ Bu konuda yeterli açıklama bulunamadı.")
+                    else:
+                        st.error("⚠️ Aranan konu bulunamadı. Lütfen kelimeyi kontrol edin.")
+                except:
+                    st.error("❌ Bağlantı hatası: Sunucuya ulaşılamıyor.")
     else:
-        # Wikipedia Analiz Motoru
-        url = f"https://tr.wikipedia.org/wiki/{prompt.replace(' ', '_')}"
-        try:
-            res = requests.get(url, timeout=5)
-            if res.status_code == 200:
-                soup = BeautifulSoup(res.text, 'html.parser')
-                p = soup.find_all('p')
-                cevap = p[1].text[:1000] if len(p) > 1 else "Üzgünüm, bu konuda detaylı veri bulamadım."
-            else:
-                cevap = "Aradığınız başlıkta bir kaynak bulunamadı."
-        except:
-            cevap = "Bağlantı hatası oluştu."
+        st.warning("Lütfen bir konu başlığı giriniz.")
 
-        # Hafızaya Kaydet
-        st.session_state.mesajlar.append({"soru": prompt, "cevap": cevap})
-        st.rerun() # Sayfayı yenileyip mesajı ekrana basar
+st.divider()
+st.caption("TürkAI v45.0 | Güvenli ve Filtreli Yapay Zeka Arayüzü")
 
 
