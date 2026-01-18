@@ -13,121 +13,126 @@ if "kullanici_adi" not in st.session_state:
 if "gecmis" not in st.session_state:
     st.session_state.gecmis = []
 
-# --- 🧹 TEMİZLİK ARACI (Wikipedia İşaretlerini Siler) ---
+# --- 🧹 SÜPER TEMİZLİK ARACI (Soru İşareti Düşmanı) ---
 def metni_temizle(metin):
-    # [1], [2], [15] gibi kaynak işaretlerini temizler
-    temiz = re.sub(r'\[\d+\]', '', metin)
-    # Garip boşlukları ve satır başlarını düzenler
-    return temiz.strip()
+    # 1. Wikipedia kaynak numaralarını siler: [1], [22]
+    metin = re.sub(r'\[\d+\]', '', metin)
+    
+    # 2. PDF'in tanımadığı Yunanca ve özel sembolleri ayıklar (Sadece standart karakterleri bırakır)
+    # Bu kısım (Yunanca: τέχνη) gibi kısımlardaki yabancı harfleri temizler
+    metin = re.sub(r'[^\x00-\x7f\x80-\xff]', '', metin)
+    
+    # 3. Gizli boşluk karakterlerini (non-breaking space vb.) normal boşluğa çevirir
+    metin = metin.replace('\xa0', ' ').replace('\u200b', '')
+    
+    return metin.strip()
 
-# --- 📄 PDF OLUŞTURUCU (Türkçe Karakter Destekli) ---
+# --- 📄 PDF OLUŞTURUCU (Hatasız Mod) ---
 def pdf_olustur(baslik, icerik, kullanici):
     pdf = FPDF()
     pdf.add_page()
-    # Standart fontlar Türkçe desteklemediği için latin-1 dönüşümü yapıyoruz
-    # Bu fonksiyon metindeki Türkçe karakterleri PDF'in anlayacağı dile çevirir
+    
+    # PDF içinde soru işareti çıkmaması için güvenli karakter dönüşümü
+    def güvenli_yazi(s):
+        # Latin-1'e uymayan her şeyi temizle veya soru işaretine dönüştürmeden yok et
+        return s.encode('latin-1', 'ignore').decode('latin-1')
+
     pdf.set_font("Arial", "B", 16)
     pdf.cell(200, 10, txt="TurkAI Arastirma Raporu", ln=True, align='C')
     pdf.ln(10)
-    pdf.set_font("Arial", size=12)
     
-    # Türkçe karakter hatası almamak için metni güvenli hale getiriyoruz
-    def safe_text(s):
-        return s.encode('latin-1', 'replace').decode('latin-1')
-
-    pdf.cell(200, 10, txt=safe_text(f"Konu: {baslik}"), ln=True)
-    pdf.cell(200, 10, txt=safe_text(f"Arastirmaci: {kullanici}"), ln=True)
+    pdf.set_font("Arial", size=12)
+    pdf.cell(200, 10, txt=güvenli_yazi(f"Konu: {baslik}"), ln=True)
+    pdf.cell(200, 10, txt=güvenli_yazi(f"Arastirmaci: {kullanici}"), ln=True)
     pdf.ln(5)
-    pdf.multi_cell(0, 10, txt=safe_text(icerik))
+    
+    # Metni satırlara bölerek yazdır
+    pdf.multi_cell(0, 8, txt=güvenli_yazi(icerik))
     return pdf.output(dest='S').encode('latin-1')
 
-# --- 🎨 TEMA AYARI ---
+# --- 🎨 TEMA ---
 def yerel_css():
     st.markdown("""
         <style>
-        .stButton>button { background-color: #e63946; color: white; border-radius: 10px; width: 100%; font-weight: bold; }
-        h1 { color: #e63946; text-align: center; }
-        .stTextInput>div>div>input { border: 2px solid #e63946; }
+        .stButton>button { background-color: #e63946; color: white; border-radius: 8px; font-weight: bold; }
+        .stTextInput>div>div>input { border: 2px solid #e63946; border-radius: 8px; }
+        h1 { color: #e63946; text-align: center; border-bottom: 2px solid #e63946; padding-bottom: 10px; }
         </style>
     """, unsafe_allow_html=True)
 
-# --- 🚪 GİRİŞ EKRANI ---
+# --- 🚪 GİRİŞ ---
 if not st.session_state.giris_yapildi:
     st.set_page_config(page_title="TürkAI Giriş", page_icon="🇹🇷")
     yerel_css()
-    st.title("🇹🇷 TürkAI Analiz Merkezi")
-    isim = st.text_input("Kanka adın nedir?", placeholder="Örn: Kaptan")
-    if st.button("Sisteme Giriş Yap"):
+    st.title("🇹🇷 TürkAI Analiz Sistemi")
+    isim = st.text_input("Kullanıcı Adınız:", placeholder="Örn: Kaptan")
+    if st.button("Sisteme Giriş"):
         if len(isim) >= 2:
             st.session_state.kullanici_adi = isim
             st.session_state.giris_yapildi = True
             st.rerun()
     st.stop()
 
-# --- 🚀 ANA PANEL ---
-st.set_page_config(page_title="TürkAI v45.0 - Pro", page_icon="🇹🇷", layout="wide")
+# --- 🚀 ANA EKRAN ---
+st.set_page_config(page_title="TürkAI v45.0", page_icon="🇹🇷", layout="wide")
 yerel_css()
 
-# 👈 YAN PANEL
-st.sidebar.title("🕒 Kontrol Paneli")
-st.sidebar.success(f"👤 {st.session_state.kullanici_adi}")
-if st.sidebar.button("Güvenli Çıkış"):
+# YAN PANEL
+st.sidebar.title("🛡️ TürkAI Kontrol")
+st.sidebar.info(f"👤 Araştırmacı: {st.session_state.kullanici_adi}")
+if st.sidebar.button("Çıkış"):
     st.session_state.giris_yapildi = False
     st.rerun()
 
-st.sidebar.divider()
-st.sidebar.write("**Geçmiş Aramalar:**")
-for g in st.session_state.gecmis[-5:]:
-    st.sidebar.caption(f"• {g}")
-
-# --- ARAŞTIRMA MOTORU ---
-st.title(f"🔍 Bilgi Analiz ve Raporlama")
+# ARAŞTIRMA BÖLÜMÜ
+st.title("🔍 Profesyonel Araştırma Hattı")
 
 KARA_LISTE = ["amk", "aq", "piç", "oç", "sg", "sik", "yarrak", "göt"]
-def temiz_mi(metin):
-    return not any(kelime in metin.lower() for kelime in KARA_LISTE)
-
-konu = st.text_input("Araştırılacak Konu Başlığı:", placeholder="Örn: Galaksi")
+konu = st.text_input("Hangi konuyu derinlemesine analiz edelim?", placeholder="Örn: Teknoloji")
 
 if st.button("Analizi Başlat"):
-    if konu and temiz_mi(konu):
-        with st.spinner("Veriler filtreleniyor ve işaretler temizleniyor..."):
-            arama = konu.strip().capitalize().replace(' ', '_')
-            url = f"https://tr.wikipedia.org/wiki/{arama}"
+    if konu and not any(k in konu.lower() for k in KARA_LISTE):
+        with st.spinner("Veriler ayıklanıyor ve yabancı semboller temizleniyor..."):
+            arama_linki = konu.strip().capitalize().replace(' ', '_')
+            url = f"https://tr.wikipedia.org/wiki/{arama_linki}"
             try:
                 r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
                 if r.status_code == 200:
                     soup = BeautifulSoup(r.text, 'html.parser')
-                    paragraflar = [metni_temizle(p.get_text()) for p in soup.find_all('p') if len(p.get_text()) > 60]
+                    # Tüm paragrafları al ve her birini temizle
+                    paragraflar = [metni_temizle(p.get_text()) for p in soup.find_all('p') if len(p.get_text()) > 40]
                     
                     if paragraflar:
                         if konu not in st.session_state.gecmis:
                             st.session_state.gecmis.append(konu)
                         
-                        # ANA SONUÇ
-                        st.success(f"✅ {konu} hakkında temizlenmiş veriler hazır!")
+                        st.success(f"✅ {konu} analizi hazır.")
+                        
+                        # Özet (İlk Paragraf)
+                        st.subheader("📌 Özet Bilgi")
                         st.info(paragraflar[0])
                         
-                        # DETAYLI BİLGİ (HEPSİNİ GÖSTER)
-                        tam_metin = "\n\n".join(paragraflar[:10]) # İlk 10 paragrafı birleştir
-                        if len(paragraflar) > 1:
-                            with st.expander("📖 Detaylı Bilgiyi Gör (Kaynaklar Temizlendi)"):
-                                st.write(tam_metin)
+                        # Hepsini Göster (Detaylar)
+                        tam_metin = "\n\n".join(paragraflar[:15]) # İlk 15 paragrafı al
+                        with st.expander("📖 Tüm Detaylı Analizi Gör"):
+                            st.write(tam_metin)
                         
-                        # PDF BUTONU
-                        pdf_data = pdf_olustur(konu, tam_metin[:3000], st.session_state.kullanici_adi)
-                        st.download_button("📄 Temiz Raporu PDF Olarak İndir", pdf_data, f"{konu}_Rapor.pdf", "application/pdf")
+                        # PDF İNDİRME (Temizlenmiş Metinle)
+                        pdf_data = pdf_olustur(konu, tam_metin[:4000], st.session_state.kullanici_adi)
+                        st.download_button("📄 Temizlenmiş Raporu PDF İndir", pdf_data, f"{konu}_Arastirma.pdf", "application/pdf")
                     else:
-                        st.warning("Konu hakkında detaylı veri bulunamadı.")
+                        st.warning("Yeterli veri bulunamadı.")
                 else:
-                    st.error("Wikipedia'da bu başlık bulunamadı.")
+                    st.error("Konu başlığı Wikipedia'da bulunamadı.")
             except:
-                st.error("Sunucu bağlantısı kurulamadı.")
+                st.error("Bağlantı hatası oluştu.")
     elif konu:
-        st.error("⚠️ Lütfen uygun bir dil kullanın.")
+        st.error("⚠️ Lütfen uygun bir başlık giriniz.")
 
-st.divider()
-st.caption(f"TürkAI v45.0 | Araştırmacı: {st.session_state.kullanici_adi} | Hatasız Raporlama Modu")
+st.sidebar.divider()
+st.sidebar.write("**Arama Geçmişi:**")
+for g in st.session_state.gecmis[-5:]:
+    st.sidebar.caption(f"• {g}")
 
 
 
