@@ -6,27 +6,29 @@ import sqlite3
 import hashlib
 
 # --- ⚙️ SİSTEM AYARLARI ---
-st.set_page_config(page_title="TürkAI v185", page_icon="🇹🇷", layout="wide")
+st.set_page_config(page_title="TürkAI v190", page_icon="🇹🇷", layout="wide")
 
-# --- 🎨 TEMATİK DETAYLAR (Sadece Görsel & Kontrast) ---
+# --- 🎨 TASARIM (Kırmızı Balon & Beyaz Yazı) ---
 st.markdown("""
     <style>
     .stApp { background-color: #ffffff; }
-    h1, h2, h3 { color: #cc0000 !important; font-family: 'Segoe UI', Tahoma, sans-serif !important; }
+    h1, h2, h3 { color: #cc0000 !important; font-family: 'Segoe UI', sans-serif !important; }
 
+    /* Kullanıcı Balonu - Beyaz Yazı Sabitlendi */
     .user-box {
         background: linear-gradient(135deg, #cc0000 0%, #ff4d4d 100%);
-        color: #ffffff !important; /* BEYAZ YAZI */
+        color: #ffffff !important;
         padding: 15px 22px;
         border-radius: 20px 20px 0px 20px;
         margin: 10px 0px 25px auto;
         width: fit-content;
-        max-width: 75%;
-        box-shadow: 0px 4px 12px rgba(204, 0, 0, 0.2);
+        max-width: 80%;
+        box-shadow: 0px 4px 12px rgba(204, 0, 0, 0.15);
         font-weight: 500;
     }
     .user-box b, .user-box strong { color: #ffffff !important; }
 
+    /* AI Rapor Bloğu */
     .ai-res-block {
         background: #fdfdfd;
         border-left: 8px solid #cc0000;
@@ -50,7 +52,7 @@ st.markdown("""
 
 # --- 💾 VERİTABANI ---
 def db_baslat():
-    conn = sqlite3.connect('turkai_v185.db', check_same_thread=False)
+    conn = sqlite3.connect('turkai_v190.db', check_same_thread=False)
     c = conn.cursor()
     c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS aramalar (kullanici TEXT, konu TEXT, icerik TEXT, tarih TEXT, motor TEXT)')
@@ -59,7 +61,7 @@ def db_baslat():
 
 conn, c = db_baslat()
 
-# --- 🔑 GİRİŞ / KAYIT SİSTEMİ ---
+# --- 🔑 GİRİŞ / KAYIT ---
 if "user" not in st.session_state: st.session_state.user = None
 if "bilgi" not in st.session_state: st.session_state.bilgi = None
 if "konu" not in st.session_state: st.session_state.konu = ""
@@ -86,8 +88,8 @@ if not st.session_state.user:
                 if nu and np:
                     try:
                         c.execute("INSERT INTO users VALUES (?,?)", (nu, hashlib.sha256(np.encode()).hexdigest()))
-                        conn.commit(); st.success("Kaydoldun kanka, şimdi giriş yap.")
-                    except: st.error("Bu kullanıcı adı dolu.")
+                        conn.commit(); st.success("Kaydoldun kanka! Giriş yapabilirsin.")
+                    except: st.error("Bu kullanıcı adı alınmış.")
     st.stop()
 
 # --- 🚀 PANEL ---
@@ -105,15 +107,14 @@ with st.sidebar:
             st.rerun()
 
 # --- 💻 ÇALIŞMA ALANI ---
-st.markdown("## 🔍 TürkAI Araştırma Terminali")
+st.markdown("## 🔍 TürkAI Analiz Terminali")
 sorgu = st.chat_input("Neyi analiz edelim kanka?")
 
 if sorgu:
     st.session_state.son_sorgu = sorgu
-    # Global için daha sağlam headers
-    h = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/119.0.0.0 Safari/537.36'}
+    h = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36'}
     
-    # --- V1: Wikipedia ---
+    # --- V1: Wikipedia (Senin Orijinal Kodun) ---
     if m_secim == "V1 (Wikipedia)":
         try:
             r = requests.get(f"https://tr.wikipedia.org/w/api.php?action=query&list=search&srsearch={sorgu}&format=json", headers=h).json()
@@ -121,31 +122,36 @@ if sorgu:
             soup = BeautifulSoup(requests.get(f"https://tr.wikipedia.org/wiki/{head.replace(' ', '_')}", headers=h).text, 'html.parser')
             info = "\n\n".join([p.get_text() for p in soup.find_all('p') if len(p.get_text()) > 60][:5])
             st.session_state.bilgi, st.session_state.konu = info, head
-        except: st.session_state.bilgi = "Wikipedia'da veri bulunamadı kanka."
+        except: st.session_state.bilgi = "Wikipedia'da buna dair bir kayıt bulamadım kanka."
 
-    # --- V2: Global (Düzeltildi) ---
+    # --- V2: Global (Yedekli ve Sağlam) ---
     elif m_secim == "V2 (Global/Sözlük)":
         try:
-            # Önce API'den hızlıca çekmeyi dene
+            # 1. Aşama: DuckDuckGo API
             r = requests.get(f"https://api.duckduckgo.com/?q={sorgu}&format=json&no_html=1", headers=h).json()
             bilgi = r.get("AbstractText")
             
-            # Eğer API boş dönerse, manuel arama simülasyonu yap (Senin orijinal mantığın)
+            # 2. Aşama: Eğer boşsa HTML Scraping (Orijinal Mantık)
             if not bilgi:
-                search_url = f"https://duckduckgo.com/html/?q={sorgu}"
-                soup = BeautifulSoup(requests.get(search_url, headers=h).text, 'html.parser')
+                r_html = requests.get(f"https://duckduckgo.com/html/?q={sorgu}", headers=h)
+                soup = BeautifulSoup(r_html.text, 'html.parser')
                 snippet = soup.find('a', class_='result__snippet')
-                bilgi = snippet.get_text() if snippet else "Global kaynaklarda net bir sonuç bulunamadı kanka."
+                if snippet:
+                    bilgi = snippet.get_text()
+            
+            # 3. Aşama: Hala boşsa Alternatif Global Arama
+            if not bilgi:
+                bilgi = "Global kaynaklarda bu terim için net bir özet bulunamadı. Lütfen daha genel bir kelime ile dene kanka."
             
             st.session_state.bilgi, st.session_state.konu = bilgi, sorgu.title()
-        except: st.session_state.bilgi = "Global servis şu an yanıt vermiyor, tekrar dener misin?"
+        except: st.session_state.bilgi = "Global servislere şu an ulaşılamıyor, internetini kontrol et kanka."
 
     # --- V3: Hesap Makinesi ---
     elif m_secim == "V3 (Hesap Makinesi)":
         try:
             temiz = "".join(c for c in sorgu if c in "0123456789+-*/(). ")
-            st.session_state.bilgi, st.session_state.konu = f"Sonuç: {eval(temiz, {'__builtins__': {}}, {})}", "Matematik"
-        except: st.session_state.bilgi = "Hesaplamada hata çıktı."
+            st.session_state.bilgi, st.session_state.konu = f"Matematiksel Analiz: {eval(temiz, {'__builtins__': {}}, {})}", "Matematik"
+        except: st.session_state.bilgi = "Hesaplama yapılamadı."
 
     if st.session_state.bilgi:
         c.execute("INSERT INTO aramalar VALUES (?,?,?,?,?)", (st.session_state.user, st.session_state.konu, st.session_state.bilgi, str(datetime.datetime.now()), m_secim))
