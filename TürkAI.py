@@ -25,6 +25,7 @@ st.markdown("""
         width: fit-content;
         max-width: 70%;
         margin-left: auto;
+        box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
     }
     
     .ai-msg {
@@ -42,6 +43,7 @@ st.markdown("""
         background-color: #cc0000 !important;
         color: white !important;
         border-radius: 8px !important;
+        font-weight: bold !important;
         width: 100%;
     }
     </style>
@@ -49,7 +51,7 @@ st.markdown("""
 
 # --- 💾 VERİTABANI ---
 def db_baslat():
-    conn = sqlite3.connect('turkai_v120_clean.db', check_same_thread=False)
+    conn = sqlite3.connect('turkai_v121_chat.db', check_same_thread=False)
     c = conn.cursor()
     c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS aramalar (kullanici TEXT, konu TEXT, icerik TEXT, tarih TEXT, link TEXT, motor TEXT)')
@@ -72,17 +74,18 @@ if not st.session_state.user:
         mod = st.radio("Seçim:", ["Giriş Yap", "Kayıt Ol"], horizontal=True)
         u_in = st.text_input("Kullanıcı")
         p_in = st.text_input("Şifre", type="password")
-        if st.button("Sisteme Giriş"):
+        if st.button("Başlat"):
             h_p = hashlib.sha256(p_in.encode()).hexdigest()
             if mod == "Giriş Yap":
                 c.execute("SELECT * FROM users WHERE username=? AND password=?", (u_in, h_p))
                 if c.fetchone():
                     st.session_state.user = u_in; st.query_params["u"] = u_in; st.rerun()
+                else: st.warning("Bilgiler uyuşmadı.")
             else:
                 try:
                     c.execute("INSERT INTO users VALUES (?,?)", (u_in, h_p)); conn.commit()
                     st.session_state.user = u_in; st.query_params["u"] = u_in; st.rerun()
-                except: pass
+                except: st.warning("Bu kullanıcı zaten kayıtlı.")
     st.stop()
 
 # --- 🚀 PANEL ---
@@ -91,57 +94,57 @@ with st.sidebar:
     if st.button("🔴 Çıkış"):
         st.session_state.clear(); st.query_params.clear(); st.rerun()
     st.divider()
-    m_secim = st.radio("Motor Seçimi:", ["Wikipedia", "Sözlük/Teknik", "Hesap Makinesi"])
+    m_secim = st.radio("Motor:", ["V1 (Wikipedia)", "V2 (Sözlük/Teknik)", "V3 (Hesap Makinesi)"])
     
-    if m_secim == "Hesap Makinesi":
-        st.info("💡 Çarpma işlemi için (*) kullanın.")
+    if m_secim == "V3 (Hesap Makinesi)":
+        st.warning("⚠️ Not: Çarpma işareti (*) sembolüdür.")
     
     st.divider()
-    st.subheader("📂 Geçmiş Analizler")
-    try:
-        c.execute("SELECT konu, icerik, motor FROM aramalar WHERE kullanici=? ORDER BY tarih DESC LIMIT 10", (st.session_state.user,))
-        for k, i, m in c.fetchall():
-            if st.button(f"📌 {k[:18]}", key=f"h_{k}_{datetime.datetime.now().microsecond}", use_container_width=True):
-                st.session_state.bilgi, st.session_state.son_sorgu = i, k
-                st.rerun()
-    except: pass
+    st.subheader("📂 Geçmiş")
+    c.execute("SELECT konu, icerik, motor FROM aramalar WHERE kullanici=? ORDER BY tarih DESC LIMIT 10", (st.session_state.user,))
+    for k, i, m in c.fetchall():
+        if st.button(f"📌 [{m}] {k[:15]}", key=f"h_{k}_{datetime.datetime.now().microsecond}", use_container_width=True):
+            st.session_state.bilgi, st.session_state.son_sorgu = i, k
+            st.rerun()
 
 # --- 💬 CHAT EKRANI ---
-st.markdown("<h2 style='border-bottom: 2px solid #cc0000;'>TürkAI Terminal v120</h2>", unsafe_allow_html=True)
+st.markdown("<h2 style='border-bottom: 2px solid #cc0000;'>TürkAI Analiz Terminali</h2>", unsafe_allow_html=True)
 
-sorgu = st.chat_input("Buraya yazın...")
+sorgu = st.chat_input("Mesajınızı yazın...")
 
 if sorgu:
     st.session_state.son_sorgu = sorgu
-    h = {'User-Agent': 'Mozilla/5.0'}
+    headers = {'User-Agent': 'Mozilla/5.0'}
     
-    # --- MOTOR 1: HESAP MAKİNESİ ---
-    if m_secim == "Hesap Makinesi":
+    # --- V3 HESAP MAKİNESİ ---
+    if m_secim == "V3 (Hesap Makinesi)":
         try:
-            # Sadece matematiksel karakterleri ayıkla
-            temiz = "".join(char for char in sorgu if char in "0123456789+-*/(). ")
-            res = eval(temiz, {"__builtins__": {}}, {})
-            st.session_state.bilgi = f"🔢 Hesaplama Sonucu: {res}"
-            c.execute("INSERT INTO aramalar (kullanici, konu, icerik, tarih, motor) VALUES (?,?,?,?,?)", 
-                      (st.session_state.user, "Matematik", st.session_state.bilgi, str(datetime.datetime.now()), "V3"))
-            conn.commit(); st.rerun()
-        except: st.session_state.bilgi = "⚠️ Matematiksel işlem anlaşılamadı."
+            # Güvenli matematik temizliği
+            temiz_islem = "".join(char for char in sorgu if char in "0123456789+-*/(). ")
+            res = eval(temiz_islem, {"__builtins__": {}}, {})
+            info, head = f"🔢 Hesaplama Sonucu: {res}", "Matematik"
+            c.execute("INSERT INTO aramalar (kullanici, konu, icerik, tarih, motor) VALUES (?,?,?,?,?)", (st.session_state.user, head, info, str(datetime.datetime.now()), "V3"))
+            conn.commit(); st.session_state.bilgi = info; st.rerun()
+        except:
+            st.session_state.bilgi = "⚠️ İşlem anlaşılamadı. Lütfen sadece sayı ve matematiksel işaretler kullanın."
 
-    # --- MOTOR 2: WIKIPEDIA ---
-    elif m_secim == "Wikipedia":
+    # --- V1 WIKIPEDIA ---
+    elif m_secim == "V1 (Wikipedia)":
         try:
-            r = requests.get(f"https://tr.wikipedia.org/w/api.php?action=query&list=search&srsearch={sorgu}&format=json", headers=h).json()
-            head = r['query']['search'][0]['title']
-            link = f"https://tr.wikipedia.org/wiki/{head.replace(' ', '_')}"
-            soup = BeautifulSoup(requests.get(link, headers=h).text, 'html.parser')
-            txt = "\n\n".join([p.get_text() for p in soup.find_all('p') if len(p.get_text()) > 60][:5])
-            st.session_state.bilgi = txt
-            c.execute("INSERT INTO aramalar (kullanici, konu, icerik, tarih, motor, link) VALUES (?,?,?,?,?,?)", 
-                      (st.session_state.user, head, txt, str(datetime.datetime.now()), "V1", link))
-            conn.commit(); st.rerun()
-        except: st.session_state.bilgi = "🔍 Aradığınız konu hakkında bilgi bulunamadı."
+            r = requests.get(f"https://tr.wikipedia.org/w/api.php?action=query&list=search&srsearch={sorgu}&format=json", headers=headers).json()
+            if r['query']['search']:
+                head = r['query']['search'][0]['title']
+                link = f"https://tr.wikipedia.org/wiki/{head.replace(' ', '_')}"
+                soup = BeautifulSoup(requests.get(link, headers=headers).text, 'html.parser')
+                info = "\n\n".join([p.get_text() for p in soup.find_all('p') if len(p.get_text()) > 60][:5])
+                c.execute("INSERT INTO aramalar (kullanici, konu, icerik, tarih, motor, link) VALUES (?,?,?,?,?,?)", (st.session_state.user, head, info, str(datetime.datetime.now()), "V1", link))
+                conn.commit(); st.session_state.bilgi = info; st.rerun()
+            else:
+                st.session_state.bilgi = "🔍 Üzgünüm, bu konuyla ilgili bir kayıt bulamadım."
+        except:
+            st.session_state.bilgi = "🌐 Bilgiye erişirken bir sorun oluştu, lütfen tekrar deneyin."
 
-# --- 📊 GÖRÜNÜM ---
+# --- 📊 MESAJ GÖRÜNÜMÜ ---
 if st.session_state.son_sorgu:
     st.markdown(f"<div class='user-msg'><b>Siz:</b><br>{st.session_state.son_sorgu}</div>", unsafe_allow_html=True)
 
