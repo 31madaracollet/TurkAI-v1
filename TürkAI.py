@@ -1,34 +1,10 @@
 import streamlit as st
 import requests
-import random
 from fuzzywuzzy import fuzz
 from bs4 import BeautifulSoup
 
-# --- 🔑 ANAHTARLARIN ---
-SERVICE_ID = "service_cphuc5v"
-TEMPLATE_ID = "template_icpc1mx"
-PUBLIC_KEY = "WSbTebVBao1cHy4dT" # <--- Kendi anahtarını buraya yaz kanka!
-
-# --- ✉️ EMAILJS MOTORU (Hata Almamak İçin En Üste Aldık) ---
-def kod_gonder(email, code):
-    url = "https://api.emailjs.com/api/v1.0/email/send"
-    data = {
-        'service_id': SERVICE_ID,
-        'template_id': TEMPLATE_ID,
-        'user_id': PUBLIC_KEY,
-        'template_params': {
-            'to_email': email,
-            'otp_code': code
-        }
-    }
-    try:
-        res = requests.post(url, json=data, timeout=10)
-        return res.status_code == 200
-    except:
-        return False
-
 # --- 🛡️ AKILLI GÜVENLİK DUVARI ---
-KARA_LISTE = ["amk", "aq", "piç", "oç", "sg", "sik", "yarrak", "göt"] 
+KARA_LISTE = ["amk", "aq", "piç", "oç", "sg", "sik", "yarrak", "göt", "yavşak"] 
 
 def akilli_filtre(metin):
     if not metin: return True
@@ -41,73 +17,74 @@ def akilli_filtre(metin):
 
 # --- 🧠 SİSTEM HAFIZASI ---
 if "log" not in st.session_state: st.session_state.log = False
-if "otp" not in st.session_state: st.session_state.otp = None
 if "chat" not in st.session_state: st.session_state.chat = []
-if "email" not in st.session_state: st.session_state.email = ""
-if "kayitli_kullanicilar" not in st.session_state:
-    st.session_state.kayitli_kullanicilar = []
+if "username" not in st.session_state: st.session_state.username = ""
 
-# --- 🚪 GİRİŞ VE KAYIT ARAYÜZÜ ---
+# --- 🚪 BASİT GİRİŞ EKRANI ---
 if not st.session_state.log:
-    st.set_page_config(page_title="TürkAI v85.0 - Giriş", page_icon="🔐")
-    st.title("🇹🇷 TürkAI Güvenlik Hattı")
+    st.set_page_config(page_title="TürkAI Giriş", page_icon="👋")
+    st.title("🇹🇷 TürkAI Analiz Merkezi")
+    st.markdown("---")
     
-    secenek = st.radio("Yapmak istediğiniz işlemi seçin:", ["Giriş Yap", "Kayıt Ol"], horizontal=True)
-
-    if secenek == "Kayıt Ol":
-        st.subheader("📝 Yeni Hesap Oluştur")
-        email_reg = st.text_input("Kayıt için E-posta:", key="reg_input")
-        if st.button("Kodu Gönder ve Kaydı Başlat"):
-            if email_reg in st.session_state.kayitli_kullanicilar:
-                st.warning("Bu e-posta zaten kayıtlı.")
-            elif "@" in email_reg:
-                st.session_state.otp = str(random.randint(100000, 999999))
-                if kod_gonder(email_reg, st.session_state.otp):
-                    st.session_state.kayitli_kullanicilar.append(email_reg)
-                    st.success(f"✅ Kod {email_reg} adresine gönderildi!")
-                else: st.error("Mail gönderilemedi. API anahtarlarını kontrol et.")
-            else: st.error("Geçerli bir mail girin.")
-
-    else:
-        st.subheader("🔐 Üye Girişi")
-        email_log = st.text_input("Kayıtlı E-posta:", key="log_input")
-        otp_input = st.text_input("Doğrulama Kodu:", type="password")
-        
-        if st.button("Sisteme Giriş"):
-            if email_log not in st.session_state.kayitli_kullanicilar:
-                st.error("Bu e-posta kayıtlı değil.")
-            elif st.session_state.otp and otp_input == st.session_state.otp:
-                st.session_state.log = True
-                st.session_state.email = email_log
-                st.rerun()
-            else: st.error("❌ Hatalı kod!")
+    name = st.text_input("Kanka ismini veya lakabını yaz:", placeholder="Örn: Kaptan")
+    if st.button("Tıra Bin ve Başla"):
+        if len(name) > 1:
+            st.session_state.username = name
+            st.session_state.log = True
+            st.rerun()
+        else:
+            st.error("Lütfen bir isim yaz kanka!")
     st.stop()
 
-# --- 🚀 ANA ANALİZ PANELİ (Giriş Başarılıysa) ---
-st.set_page_config(page_title="TürkAI v85.0", layout="wide")
+# --- 🚀 ANA ANALİZ PANELİ ---
+st.set_page_config(page_title="TürkAI v90.0", layout="wide")
+
+# SOL PANEL (Sohbet Geçmişi)
 st.sidebar.title("🕒 Sohbet Geçmişi")
-st.sidebar.info(f"👤 {st.session_state.email}")
-if st.sidebar.button("Güvenli Çıkış"):
-    st.session_state.log = False
+st.sidebar.info(f"👤 Kaptan: {st.session_state.username}")
+if st.sidebar.button("Sohbeti Sıfırla"):
+    st.session_state.chat = []
     st.rerun()
 
-st.title("🇹🇷 TürkAI v85.0 - Ana Panel")
+st.sidebar.divider()
+for i, m in enumerate(st.session_state.chat):
+    st.sidebar.write(f"{i+1}. {m['q'][:15]}...")
+
+# ANA EKRAN
+st.title("🇹🇷 TürkAI v90.0 - Akıllı Analiz")
+st.caption("E-posta derdi bitti, doğrudan bilgiye odaklan!")
+
+# MESAJLARI GÖSTER
 for m in st.session_state.chat:
     with st.chat_message("user"): st.write(m["q"])
     with st.chat_message("assistant"): st.info(m["a"])
 
-soru = st.chat_input("Neyi merak ediyorsun?")
+# YENİ SORU GİRİŞİ
+soru = st.chat_input("Neyi merak ediyorsun kanka?")
+
 if soru:
     if not akilli_filtre(soru):
-        st.error("⚠️ Filtre: Uygunsuz üslup!")
+        st.error("⚠️ Filtre: Üslubunu bozma kanka!")
     else:
-        url = f"https://tr.wikipedia.org/wiki/{soru.replace(' ', '_')}"
-        try:
-            r = requests.get(url, timeout=7)
-            soup = BeautifulSoup(r.text, 'html.parser')
-            p_tags = soup.find_all('p')
-            res_text = p_tags[1].get_text()[:1200] if len(p_tags) > 1 else "Bilgi bulunamadı."
-            st.session_state.chat.append({"q": soru, "a": res_text})
-            st.rerun()
-        except: st.error("Hata oluştu.")
+        with st.spinner("Wikipedia taranıyor..."):
+            url = f"https://tr.wikipedia.org/wiki/{soru.replace(' ', '_')}"
+            try:
+                r = requests.get(url, timeout=7)
+                if r.status_code == 200:
+                    soup = BeautifulSoup(r.text, 'html.parser')
+                    p_tags = soup.find_all('p')
+                    res_text = ""
+                    for p in p_tags:
+                        if len(p.text) > 100:
+                            res_text = p.text[:1200]
+                            break
+                    if not res_text: res_text = "Bu konuda tam bir bilgi bulamadım."
+                else:
+                    res_text = "Maalesef sonuç bulunamadı."
+                
+                st.session_state.chat.append({"q": soru, "a": res_text})
+                st.rerun()
+            except:
+                st.error("Bağlantı hatası!")
+
 
