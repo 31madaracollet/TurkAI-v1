@@ -1,128 +1,82 @@
 import streamlit as st
 import requests
 from bs4 import BeautifulSoup
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-import numpy as np
-import re
+import time
 
-# --- GELİŞMİŞ GÜVENLİK VE FİLTRE MOTORU ---
-def icerik_denetimi(metin):
-    # Harf oyunlarını ve boşlukları bozmak için metni tamamen temizliyoruz
-    # (Örn: "a.m.k" veya "am k" -> "amk" olur)
-    temiz_metin = re.sub(r'[^a-zA-ZğüşıöçĞÜŞİÖÇ]', '', metin.lower())
-    
-    # Engellenecek kök kelimeler (Küçük harf ve boşluksuz yazılmalıdır)
-    yasakli_kokler = [
-        "siktir", "sik", "pic", "aminakoyayim", "orospucocugu", 
-        "göt", "amk", "aq", "yavsak", "pic"
-    ] 
-    
-    for kok in yasakli_kokler:
-        if kok in temiz_metin:
-            return False
-            
-    return True
-
-# --- SAYFA YAPISI ---
-st.set_page_config(page_title="TürkAI v1.0 Profesyonel", page_icon="🇹🇷")
-
-if 'hafiza' not in st.session_state:
-    st.session_state.hafiza = []
-if 'kullanici' not in st.session_state:
-    st.session_state.kullanici = ""
-
-# --- KURUMSAL BANNER ---
-st.title("🇹🇷 TürkAI - v1.0 Milli Analiz Sistemi")
+# Sayfa Ayarları
+st.set_page_config(page_title="TürkAI Pro - Analiz Sistemi", layout="wide")
+st.title("🛡️ TürkAI v1: Çok Kanallı Veri Analiz Motoru")
 st.markdown("---")
 
-# --- KULLANICI GİRİŞİ ---
-if not st.session_state.kullanici:
-    st.info("Sistemi kullanmak için kurumsal etik kurallara uygun bir kullanıcı adı giriniz.")
-    isim_giris = st.text_input("Sistem Kullanıcı Adı:")
-    if st.button("Sisteme Giriş Yap"):
-        if icerik_denetimi(isim_giris) and len(isim_giris.strip()) > 0:
-            st.session_state.kullanici = isim_giris
-            st.rerun()
-        else:
-            st.error("Hata: Kullanıcı adı uygunsuz içerik barındırmaktadır veya boştur.")
-else:
-    st.sidebar.success(f"Yetkili: {st.session_state.kullanici}")
-    st.error("""
-    **SİSTEM TALİMATI:**
-    1. Bilgi edinmek istediğiniz konuyu yazıp 'Veriyi İşle' butonuna basınız.
-    2. Veri yüklendiğinde, sorunuzun sonuna **'?'** işareti ekleyerek sorgulama yapınız.
-    3. Matematiksel işlemler için başına **'hesapla'** yazınız.
-    """)
+# Kullanıcı Girişi
+konu = st.text_input("Analiz Edilecek Stratejik Konuyu Giriniz:", placeholder="Örn: Kuantum Bilgisayarlar")
 
-    # --- HESAPLAMA MOTORU ---
-    def hesap_birimi(girdi):
-        # İşlem kısmını ayıklıyoruz
-        islem_metni = girdi.lower().replace("hesapla", "").replace(" ", "")
-        islem = re.findall(r"(\d+[\+\-\*\/\%]\d+)", islem_metni)
-        if islem:
-            try:
-                sonuc = eval(islem[0])
-                return f"🔢 Analiz Sonucu: {islem[0]} = {sonuc}"
-            except:
-                return "⚠️ Hata: Matematiksel işlem gerçekleştirilemedi."
-        return "⚠️ Hata: Lütfen 'hesapla 10*5' formatında giriş yapınız."
+def veri_cek(url, headers):
+    try:
+        res = requests.get(url, headers=headers, timeout=10)
+        if res.status_code == 200:
+            return res.text
+        return None
+    except:
+        return None
 
-    # --- ANA İŞLEM ---
-    girdi = st.text_input("Sistem Giriş Alanı (Konu veya Soru?):")
-
-    if st.button("Veriyi İşle"):
-        # Güvenlik Kontrolü
-        if not icerik_denetimi(girdi):
-            st.error("🚨 Sistem Uyarısı: Giriş yapılan metin etik kurallara aykırıdır. İşlem durduruldu.")
+if st.button("DERİN ANALİZİ BAŞLAT"):
+    if konu:
+        cols = st.columns(3)
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'}
         
-        # Hesaplama Modu
-        elif girdi.lower().startswith("hesapla"):
-            st.subheader(hesap_birimi(girdi))
-            
-        # Soru-Cevap Modu
-        elif girdi.endswith("?"):
-            if not st.session_state.hafiza:
-                st.warning("Analiz hatası: Lütfen önce bir konu başlığı girerek veriyi sisteme yükleyiniz.")
-            else:
-                try:
-                    vectorizer = TfidfVectorizer()
-                    matris = vectorizer.fit_transform(st.session_state.hafiza + [girdi])
-                    sim = cosine_similarity(matris[-1], matris[:-1])
-                    idx = sim[0].argsort()[-3:][::-1]
-                    
-                    st.write("### 🤖 Analiz Sonuçları:")
-                    bulunan = False
-                    for i in idx:
-                        if sim[0][i] > 0.05:
-                            bulunan = True
-                            with st.expander(f"Veri Kaynağı {idx.tolist().index(i)+1}"):
-                                st.write(st.session_state.hafiza[i])
-                    
-                    if not bulunan:
-                        st.warning("Sorgunuza uygun spesifik bir bilgi eşleşmesi bulunamadı.")
+        # --- 1. KAPI: GOOGLE STRATEJİK TARAMA ---
+        with cols[0]:
+            st.subheader("🌐 Google Kaynakları")
+            with st.spinner("Google kalkanı zorlanıyor..."):
+                g_url = f"https://www.google.com/search?q={konu}+nedir+hakkında+bilgi"
+                g_data = veri_cek(g_url, headers)
+                if g_data:
+                    soup = BeautifulSoup(g_data, 'html.parser')
+                    texts = [s.text for s in soup.find_all('span') if len(s.text) > 40]
+                    if texts:
+                        st.success("Veri çekildi.")
+                        st.write(texts[0])
                     else:
-                        st.write("**Sayın kullanıcı, analiz edilen veriler yeterli mi?**")
-                except:
-                    st.error("Sorgu işlenirken bir algoritma hatası oluştu.")
-        
-        # Araştırma Modu
-        else:
-            with st.spinner("Dijital kaynaklar taranıyor..."):
-                try:
-                    # Wikipedia Türkiye üzerinden veri çekme
-                    r = requests.get(f"https://tr.wikipedia.org/w/index.php?search={girdi}", timeout=10)
-                    soup = BeautifulSoup(r.text, 'html.parser')
-                    veriler = [p.get_text().strip() for p in soup.find_all('p') if len(p.get_text()) > 60]
-                    
-                    if veriler:
-                        st.session_state.hafiza = veriler
-                        st.success(f"✅ '{girdi}' konulu veri seti başarıyla analiz edildi ve sisteme yüklendi.")
-                    else:
-                        st.warning("Girilen konu hakkında yeterli dijital veri kaynağı bulunamadı.")
-                except:
-                    st.error("Bağlantı Hatası: Veri sunucularına erişilemiyor.")
+                        st.error("Google erişimi kısıtladı.")
+                else:
+                    st.error("Bağlantı başarısız.")
 
-# --- FOOTER ---
+        # --- 2. KAPI: DUCKDUCKGO (GİZLİ GEÇİT) ---
+        with cols[1]:
+            st.subheader("🦆 DuckDuckGo Analizi")
+            with st.spinner("Alternatif yollar taranıyor..."):
+                d_url = f"https://duckduckgo.com/html/?q={konu}"
+                d_data = veri_cek(d_url, headers)
+                if d_data:
+                    soup = BeautifulSoup(d_data, 'html.parser')
+                    links = soup.find_all('a', class_='result__a')
+                    if links:
+                        st.success("Alternatif veri bulundu.")
+                        st.write(links[0].text)
+                    else:
+                        st.warning("Sonuç bulunamadı.")
+                else:
+                    st.error("Erişim engellendi.")
+
+        # --- 3. KAPI: WIKIPEDIA (AKADEMİK DOĞRULAMA) ---
+        with cols[2]:
+            st.subheader("📚 Akademik Kayıtlar")
+            with st.spinner("Arşivler inceleniyor..."):
+                w_url = f"https://tr.wikipedia.org/wiki/{konu.replace(' ', '_')}"
+                w_data = veri_cek(w_url, headers)
+                if w_data:
+                    soup = BeautifulSoup(w_data, 'html.parser')
+                    p = soup.find_all('p')
+                    if len(p) > 1:
+                        st.success("Resmi kayıtlar eşleşti.")
+                        st.write(p[1].text[:500] + "...")
+                    else:
+                        st.warning("Wikipedia kaydı bulunamadı.")
+                else:
+                    st.error("Arşiv bağlantısı koptu.")
+    else:
+        st.warning("Lütfen bir analiz konusu giriniz.")
+
 st.markdown("---")
-st.caption("TürkAI v1.0 | Kurumsal Yapay Zeka Analiz Sistemi | Yerli Yazılım")
+st.caption("TürkAI v1 - Güvenli ve Çok Kanallı Veri Çekme Protokolü")
