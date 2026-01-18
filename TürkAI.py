@@ -3,55 +3,58 @@ import requests
 from bs4 import BeautifulSoup
 
 st.set_page_config(page_title="TürkAI v1 - Pro", layout="wide")
-st.title("🛡️ TürkAI v1: Çok Kanallı Kuşatma Protokolü")
+st.title("🛡️ TürkAI v1: Kalkan Delen Son Protokol")
 
-konu = st.text_input("Analiz edilecek konuyu girin (Örn: Mars Yolculuğu):")
+konu = st.text_input("Analiz edilecek konuyu girin:")
 
-def kaynak_ara(url):
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'}
+def kalkan_del(url):
+    # Google ve diğerlerini kandırmak için çok daha detaylı bir kimlik
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'tr,en-US;q=0.7,en;q=0.3',
+        'Referer': 'https://www.google.com/',
+        'DNT': '1'
+    }
     try:
-        res = requests.get(url, headers=headers, timeout=10)
+        # Verify=False yaparak SSL sertifika kalkanlarını da es geçiyoruz
+        res = requests.get(url, headers=headers, timeout=15, verify=True)
         return res.text if res.status_code == 200 else None
-    except:
-        return None
+    except Exception as e:
+        return str(e)
 
-if st.button("ANALİZİ BAŞLAT"):
+if st.button("SİSTEMİ TETİKLE"):
     if konu:
-        with st.spinner('Kalkanlar etrafından dolanılıyor...'):
-            cols = st.columns(2)
+        with st.spinner('Kalkanlar Bypass ediliyor...'):
+            # Google'ın "Özet" kısmına değil, doğrudan arama sonuçlarına odaklanıyoruz
+            search_url = f"https://www.google.com/search?q={konu}+bilgi+nedir&hl=tr"
+            html = kalkan_del(search_url)
             
-            # --- 1. KANAL: WIKIPEDIA (DOĞRUDAN BİLGİ) ---
-            with cols[0]:
-                st.subheader("📚 Ansiklopedik Veri")
-                wiki_url = f"https://tr.wikipedia.org/wiki/{konu.replace(' ', '_')}"
-                wiki_html = kaynak_ara(wiki_url)
-                if wiki_html:
-                    soup = BeautifulSoup(wiki_html, 'html.parser')
-                    paragraflar = soup.find_all('p')
-                    if len(paragraflar) > 1:
-                        st.success("Wikipedia verisi sızdırıldı.")
-                        st.write(paragraflar[1].text[:800] + "...")
-                    else:
-                        st.warning("Wikipedia'da bu başlık henüz yok.")
+            if html and "<!doctype html>" in html.lower():
+                soup = BeautifulSoup(html, 'html.parser')
+                # Google sonuçlarındaki ana metin bloklarını (Snippet) yakalıyoruz
+                snippets = soup.find_all(['span', 'div'], attrs={'class': ['VwiC3b', 'yWG44c', 'MUFuzb']})
+                
+                if snippets:
+                    st.success("🎯 Kalkan Delindi! Veri Sızdırıldı.")
+                    for i, s in enumerate(snippets[:5]):
+                        if len(s.text) > 30:
+                            st.info(f"Bulgu {i+1}:")
+                            st.write(s.text)
                 else:
-                    st.error("Wikipedia kalkanı geçilemedi.")
-
-            # --- 2. KANAL: DUCKDUCKGO (ARAMA MOTORU) ---
-            with cols[1]:
-                st.subheader("🦆 Özgür Kaynak Taraması")
-                # DuckDuckGo'nun HTML sürümü botlara karşı daha esnektir
-                ddg_url = f"https://html.duckduckgo.com/html/?q={konu}"
-                ddg_html = kaynak_ara(ddg_url)
-                if ddg_html:
-                    soup = BeautifulSoup(ddg_html, 'html.parser')
-                    sonuclar = soup.find_all('a', class_='result__snippet')
-                    if sonuclar:
-                        st.success("Alternatif kaynaklar bulundu.")
-                        for s in sonuclar[:3]: # İlk 3 özeti göster
-                            st.write(f"• {s.text}")
+                    # Eğer Google hala vermiyorsa DuckDuckGo Lite sürümünü (bot dostu) dene
+                    st.warning("Google hala direniyor, alternatif tünel (DuckDuckGo Lite) açılıyor...")
+                    ddg_url = f"https://duckduckgo.com/lite/?q={konu}"
+                    ddg_html = kalkan_del(ddg_url)
+                    if ddg_html:
+                        soup_ddg = BeautifulSoup(ddg_html, 'html.parser')
+                        results = soup_ddg.find_all('td', class_='result-snippet')
+                        for r in results[:3]:
+                            st.write(f"• {r.text.strip()}")
                     else:
-                        st.warning("Alternatif kaynaklarda veri bulunamadı.")
-                else:
-                    st.error("DuckDuckGo bağlantısı reddedildi.")
+                        st.error("Tüm yollar kapalı. Sunucu IP adresi tamamen bloklanmış olabilir.")
+            else:
+                st.error("Kritik Hata: Sunucu kimliği tespit edildi ve kapılar kapatıldı.")
     else:
-        st.warning("Lütfen bir konu giriniz.")
+        st.warning("Konu girmeden motoru çalıştıramazsın kanka.")
+
