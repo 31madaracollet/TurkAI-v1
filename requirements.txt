@@ -5,9 +5,10 @@ googlesearch-python
 fuzzywuzzy
 python-Levenshtein
 pandas
-fpdf
+fpdf2
 PyPDF2
 extra-streamlit-components
+
 
 
 
