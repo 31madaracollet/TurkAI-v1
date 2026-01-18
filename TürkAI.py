@@ -14,12 +14,12 @@ if "analiz_sonucu" not in st.session_state:
 if "su_anki_konu" not in st.session_state:
     st.session_state.su_anki_konu = ""
 
-# --- 🛡️ GELİŞMİŞ GÜVENLİK FİLTRESİ ---
+# --- 🛡️ ZIRHLI GÜVENLİK FİLTRESİ ---
 KARA_LISTE = ["amk", "aq", "piç", "oç", "sik", "yarrak", "göt", "meme", "daşşak", "ibne", "kahpe"]
 
 def guvenli_mi(metin):
     if not metin: return True
-    # Kelime benzerliği ve karakter oyunlarını yakalamak için temizleme
+    # Harf benzerliklerini ve boşluklu yazımları yakalar
     temiz_metin = re.sub(r'[^a-zA-ZğüşıöçĞÜŞİÖÇ]', '', metin.lower())
     for kelime in KARA_LISTE:
         if kelime in temiz_metin:
@@ -33,7 +33,7 @@ def metni_temizle(metin):
     metin = metin.replace('\xa0', ' ')
     return metin.strip()
 
-# --- 📄 KURUMSAL PDF OLUŞTURUCU ---
+# --- 📄 PDF OLUŞTURUCU ---
 def pdf_olustur(baslik, icerik, kullanici):
     pdf = FPDF()
     pdf.add_page()
@@ -45,63 +45,56 @@ def pdf_olustur(baslik, icerik, kullanici):
     pdf.multi_cell(0, 8, txt=safe(f"Konu: {baslik}\nArastirmaci: {kullanici}\n\n{icerik}"))
     return pdf.output(dest='S').encode('latin-1')
 
-# --- 🎨 CİDDİ ARAYÜZ TASARIMI (CSS) ---
+# --- 🎨 HİBRİT ARAYÜZ (GÜNDÜZ/GECE UYUMLU) ---
 def stil_uygula():
     st.markdown("""
         <style>
-        /* Kurumsal Arka Plan */
-        .stApp { background-color: #131314; color: #E3E3E3; }
-        
-        /* Orta Alan Sınırlama (Ciddi Düzen) */
+        /* Ana Konteynır Ayarı */
         .main .block-container {
-            max-width: 800px;
-            padding-top: 4rem;
+            max-width: 850px;
+            padding-top: 3rem;
             padding-bottom: 10rem;
         }
 
-        /* Analiz Kartı */
+        /* Kurumsal Analiz Kartı - Hem açık hem koyu temada okunabilir */
         .stInfo {
-            background-color: #1e1f20;
-            border: 1px solid #333537;
             border-radius: 16px;
             padding: 25px;
             font-size: 1.1rem;
             line-height: 1.7;
+            border: 1px solid rgba(128, 128, 128, 0.2);
         }
 
-        /* Sabit Alt Giriş Barı */
-        .stChatInputContainer {
-            padding-bottom: 20px;
-            background-color: #131314;
-        }
-        
-        /* Başlık Stili */
+        /* Başlıklar */
         h1 { 
-            color: #ffffff; 
-            font-size: 2.2rem; 
             text-align: center; 
-            font-weight: 600;
-            letter-spacing: -1px;
+            font-weight: 700;
             margin-bottom: 2rem;
         }
 
-        /* Sidebar Sadelik */
-        section[data-testid="stSidebar"] {
-            background-color: #1e1f20;
-            border-right: 1px solid #333537;
+        /* Sabit Alt Bar (Gemini Stili) */
+        .stChatInputContainer {
+            padding-bottom: 25px;
+        }
+        
+        /* PDF Butonu Estetiği */
+        .stDownloadButton>button {
+            border-radius: 12px;
+            padding: 0.5rem 2rem;
+            font-weight: bold;
         }
         </style>
     """, unsafe_allow_html=True)
 
 # --- 🚪 GİRİŞ SİSTEMİ ---
 if not st.session_state.giris_yapildi:
-    st.set_page_config(page_title="TürkAI | Kurumsal Giriş", page_icon="🇹🇷")
+    st.set_page_config(page_title="TürkAI | Giriş", page_icon="🇹🇷")
     stil_uygula()
-    st.markdown("<h1>TürkAI Analiz Sistemi</h1>", unsafe_allow_html=True)
+    st.title("🇹🇷 TürkAI Analiz")
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        isim = st.text_input("Kullanıcı Kimliği:", placeholder="İsminizi giriniz...")
-        if st.button("Sisteme Eriş"):
+        isim = st.text_input("Kimliğinizi Tanımlayın:", placeholder="İsim...")
+        if st.button("Sistemi Aç"):
             if len(isim) >= 2:
                 st.session_state.kullanici_adi = isim
                 st.session_state.giris_yapildi = True
@@ -112,40 +105,41 @@ if not st.session_state.giris_yapildi:
 st.set_page_config(page_title="TürkAI v45.0", page_icon="🇹🇷", layout="wide")
 stil_uygula()
 
-# Yan Panel
+# Yan Panel (Sade ve Ciddi)
 with st.sidebar:
-    st.markdown(f"### 👤 {st.session_state.kullanici_adi}")
+    st.markdown(f"### 🛡️ Oturum: {st.session_state.kullanici_adi}")
     st.divider()
-    if st.button("Güvenli Çıkış"):
+    if st.button("Çıkış Yap"):
         st.session_state.giris_yapildi = False
         st.rerun()
 
 # ANA EKRAN
-st.markdown("<h1>Profesyonel Bilgi Analizi</h1>", unsafe_allow_html=True)
+st.markdown("<h1>Profesyonel Bilgi Hattı</h1>", unsafe_allow_html=True)
 
+# Eğer bir analiz yapıldıysa ekranda göster
 if st.session_state.analiz_sonucu:
-    st.markdown(f"### 📋 {st.session_state.su_anki_konu}")
+    st.markdown(f"### 📋 Analiz: {st.session_state.su_anki_konu}")
     st.info(st.session_state.analiz_sonucu)
     
-    # PDF İndirme Alanı
+    # PDF Butonu tam cevabın bittiği yerde
     pdf_data = pdf_olustur(st.session_state.su_anki_konu, st.session_state.analiz_sonucu, st.session_state.kullanici_adi)
     st.download_button(
-        label="📄 Analiz Raporunu İndir (PDF)",
+        label="📄 Raporu PDF Olarak İndir",
         data=pdf_data,
         file_name=f"TurkAI_{st.session_state.su_anki_konu}.pdf",
         mime="application/pdf"
     )
 else:
-    st.markdown("<p style='text-align: center; color: #9aa0a6;'>Araştırmak istediğiniz konuyu aşağıdaki panele yazarak analizi başlatabilirsiniz.</p>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; opacity: 0.7;'>Merak ettiğiniz konuyu aşağıya yazarak kurumsal analizi başlatabilirsiniz.</p>", unsafe_allow_html=True)
 
-# --- 📥 ALT ARAMA BARI (KURUMSAL) ---
-konu = st.chat_input("Konu başlığını giriniz...")
+# --- 📥 SABİT ALT BAR (EN ALTA ÇAKILI) ---
+konu = st.chat_input("Analiz edilecek konuyu buraya yazın...")
 
 if konu:
     if not guvenli_mi(konu):
-        st.error("⚠️ Uyarı: Uygunsuz içerik veya kural dışı kelime kullanımı tespit edildi.")
+        st.error("⚠️ Uyarı: Sistemsel kural ihlali (Uygunsuz içerik).")
     else:
-        with st.spinner("Veri tabanı taranıyor..."):
+        with st.spinner("Veri madenciliği yapılıyor..."):
             arama = konu.strip().capitalize().replace(' ', '_')
             url = f"https://tr.wikipedia.org/wiki/{arama}"
             try:
@@ -155,15 +149,15 @@ if konu:
                     paragraflar = [metni_temizle(p.get_text()) for p in soup.find_all('p') if len(p.get_text()) > 60]
                     
                     if paragraflar:
+                        # İlk 8 paragrafı alarak doyurucu bir özet sunuyoruz (Silmedik, güncelledik)
                         st.session_state.analiz_sonucu = "\n\n".join(paragraflar[:8])
                         st.session_state.su_anki_konu = konu
                         st.rerun()
                     else:
-                        st.error("Konuyla ilgili yeterli veri derinliğine ulaşılamadı.")
+                        st.error("Konu hakkında yeterli derinlikte veri bulunamadı.")
                 else:
-                    st.error("Belirtilen başlık sistem kayıtlarında bulunamadı.")
+                    st.error("Aranan başlık literatürde bulunamadı.")
             except:
-                st.error("Bağlantı protokolü hatası.")
-
+                st.error("Ağ bağlantısı kurulamadı.")
 
 
