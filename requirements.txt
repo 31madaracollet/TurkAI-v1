@@ -7,3 +7,4 @@ scikit-learn
 nltk
 lxml
 html5lib
+googlesearch-python
