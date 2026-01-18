@@ -1,63 +1,55 @@
 import streamlit as st
 import requests
-from bs4 import BeautifulSoup
 import random
+from fuzzywuzzy import fuzz
+from bs4 import BeautifulSoup
 
-# --- GÜVENLİK PROTOKOLÜ ---
-KARA_LISTE = [
-    "amk", "aq", "piç", "oç", "sg", "sik", "yarrak", "göt", "meme", "daşşak",
-    "ibne", "kahpe", "yavşak", "gerizekalı", "salak", "aptal", "it", "köpek",
-    "şerefsiz", "namussuz", "pezevenk", "fahişe", "mal", "oros", "ananı"
-]
+# --- 🔑 ANAHTARLARIN ---
+SERVICE_ID = "service_t94tzf3"
+TEMPLATE_ID = "template_icpc1mx"
+PUBLIC_KEY = "WSbTebVBao1cHy4dT"
 
-def temiz_mi(metin):
-    metin_kucuk = metin.lower()
-    for kelime in KARA_LISTE:
-        if kelime in metin_kucuk:
-            return False
-    return True
+# --- 🧠 KAYITLI KULLANICI KASASI (DATABASE SİMÜLASYONU) ---
+# Gerçek bir veritabanı bağlayana kadar bu liste tarayıcı açık kaldığı sürece tutar.
+if "kayitli_kullanicilar" not in st.session_state:
+    st.session_state.kayitli_kullanicilar = [] # Burası bizim "Müşteri Defteri"
 
-# --- WEB ARAYÜZÜ AYARLARI ---
-st.set_page_config(page_title="TürkAI v45.0 - Pro", page_icon="🇹🇷")
-st.title("🇹🇷 TürkAI v45.0 - Güvenli Analiz Hattı")
+# --- 🚪 GİRİŞ VE KAYIT ARAYÜZÜ ---
+if "log" not in st.session_state: st.session_state.log = False
 
-hitaplar = ["Değerli Dostum", "Sayın Kullanıcı", "Kıymetli Arkadaşım"]
-hitap = random.choice(hitaplar)
+if not st.session_state.log:
+    st.set_page_config(page_title="TürkAI v80.0 - Giriş", page_icon="🔐")
+    st.title("🇹🇷 TürkAI Güvenlik Hattı")
+    
+    # Giriş mi Kayıt mı seçeneği
+    secenek = st.radio("Yapmak istediğiniz işlemi seçin:", ["Giriş Yap", "Kayıt Ol"], horizontal=True)
 
-# --- ANA PANEL ---
-konu = st.text_input("Araştırmak istediğiniz konuyu giriniz:", placeholder="Örn: Uzay Teknolojileri")
+    if secenek == "Kayıt Ol":
+        st.subheader("📝 Yeni Hesap Oluştur")
+        email = st.text_input("Kayıt için E-posta:")
+        if st.button("Kodu Gönder ve Kaydı Tamamla"):
+            if email in st.session_state.kayitli_kullanicilar:
+                st.warning("Bu e-posta zaten kayıtlı, Giriş Yap sekmesine gidin.")
+            elif "@" in email:
+                st.session_state.otp = str(random.randint(100000, 999999))
+                if kod_gonder(email, st.session_state.otp):
+                    st.session_state.kayitli_kullanicilar.append(email) # Deftere yazdık!
+                    st.success(f"✅ Kayıt kodu {email} adresine gönderildi!")
+                else: st.error("Mail gönderilemedi.")
+            else: st.error("Geçerli bir mail girin.")
 
-if st.button("Analizi Başlat"):
-    if konu:
-        if not temiz_mi(konu):
-            st.error("⚠️ TürkAI: Uygunsuz içerik veya üslup tespit edildi. Analiz iptal edildi.")
-        else:
-            with st.spinner(f"🔎 {hitap}, kaynaklar taranıyor..."):
-                url = f"https://tr.wikipedia.org/wiki/{konu.replace(' ', '_')}"
-                try:
-                    r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
-                    if r.status_code == 200:
-                        soup = BeautifulSoup(r.text, 'html.parser')
-                        paragraflar = [p.get_text().strip() for p in soup.find_all('p') if len(p.get_text()) > 60]
-                        
-                        if paragraflar:
-                            st.success(f"✅ {hitap}, veriler başarıyla analiz edildi.")
-                            st.write("### 📖 Analiz Sonucu:")
-                            st.info(paragraflar[0]) # İlk paragrafı göster
-                            if len(paragraflar) > 1:
-                                with st.expander("Detaylı Bilgiyi Gör"):
-                                    st.write(" ".join(paragraflar[1:4]))
-                        else:
-                            st.warning("⚠️ Bu konuda yeterli açıklama bulunamadı.")
-                    else:
-                        st.error("⚠️ Aranan konu bulunamadı. Lütfen kelimeyi kontrol edin.")
-                except:
-                    st.error("❌ Bağlantı hatası: Sunucuya ulaşılamıyor.")
     else:
-        st.warning("Lütfen bir konu başlığı giriniz.")
-
-st.divider()
-st.caption("TürkAI v45.0 | Güvenli ve Filtreli Yapay Zeka Arayüzü")
-
-
+        st.subheader("🔐 Üye Girişi")
+        email = st.text_input("Kayıtlı E-posta:")
+        otp_input = st.text_input("Doğrulama Kodu:", type="password")
+        
+        if st.button("Sisteme Giriş"):
+            if email not in st.session_state.kayitli_kullanicilar:
+                st.error("Bu e-posta kayıtlı değil. Önce kayıt olun.")
+            elif st.session_state.otp and otp_input == st.session_state.otp:
+                st.session_state.log = True
+                st.session_state.email = email
+                st.rerun()
+            else: st.error("❌ Hatalı kod!")
+    st.stop()
 
