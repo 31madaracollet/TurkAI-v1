@@ -7,49 +7,51 @@ import sqlite3
 import hashlib
 from fpdf import FPDF
 
-# --- ⚙️ AYARLAR ---
-st.set_page_config(page_title="TürkAI v95 - 2000 Motor", page_icon="🏎️", layout="wide")
+# --- SİSTEM AYARLARI ---
+st.set_page_config(page_title="TürkAI Araştırma Paneli", page_icon="🏛️", layout="wide")
 
-# --- 💾 VERİTABANI ---
+# --- VERİTABANI YÖNETİMİ ---
 def get_db(): 
-    return sqlite3.connect('turkai_v95_ultra.db', check_same_thread=False)
+    return sqlite3.connect('turkai_v100_pro.db', check_same_thread=False)
 
 conn = get_db(); c = conn.cursor()
 c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT)')
 c.execute('CREATE TABLE IF NOT EXISTS aramalar (kullanici TEXT, konu TEXT, icerik TEXT, tarih TEXT, link TEXT, motor TEXT)')
 conn.commit()
 
-# --- 📄 PDF SİSTEMİ ---
-def pdf_olustur(baslik, metin, kaynak):
+# --- DÖKÜMANTASYON SERVİSİ (PDF) ---
+def pdf_olustur(baslik, metin, kaynak_tipi):
     try:
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("Helvetica", "B", 16)
         b = str(baslik).encode('latin-1', 'ignore').decode('latin-1')
         m = str(metin).encode('latin-1', 'ignore').decode('latin-1')
-        k = f"Kaynak: {kaynak}".encode('latin-1', 'ignore').decode('latin-1')
+        k = f"Kaynak Tipi: {kaynak_tipi}".encode('latin-1', 'ignore').decode('latin-1')
+        
         pdf.cell(0, 10, b, ln=True)
         pdf.ln(5)
         pdf.set_font("Helvetica", size=10); pdf.cell(0, 10, k, ln=True); pdf.ln(5)
-        pdf.set_font("Helvetica", size=12); pdf.multi_cell(0, 10, m)
+        pdf.set_font("Helvetica", size=11); pdf.multi_cell(0, 10, m)
         return pdf.output()
     except: return None
 
-# --- 🔑 GİRİŞ VE HAFIZA ---
+# --- OTURUM VE GÜVENLİK ---
 if "u" in st.query_params and "user" not in st.session_state:
     st.session_state.user = st.query_params["u"]
 
 if "user" not in st.session_state: st.session_state.user = None
 if "bilgi" not in st.session_state: st.session_state.bilgi = None
 if "konu" not in st.session_state: st.session_state.konu = ""
-if "motor" not in st.session_state: st.session_state.motor = ""
+if "aktif_motor" not in st.session_state: st.session_state.aktif_motor = "V1 (Wikipedia)"
 
 if not st.session_state.user:
-    st.markdown("<h1 style='text-align:center;'>🏎️ TürkAI v95 LOGIN</h1>", unsafe_allow_html=True)
-    with st.container():
-        u = st.text_input("Kullanıcı Adı")
-        p = st.text_input("Şifre", type="password")
-        if st.button("Sistemi Ateşle", use_container_width=True):
+    st.markdown("<h2 style='text-align:center;'>TürkAI Kurumsal Erişim</h2>", unsafe_allow_html=True)
+    col1, col2, col3 = st.columns([1,1.5,1])
+    with col2:
+        u = st.text_input("Kullanıcı Kimliği")
+        p = st.text_input("Güvenlik Şifresi", type="password")
+        if st.button("Sisteme Giriş Yap", use_container_width=True):
             h_p = hashlib.sha256(p.encode()).hexdigest()
             c.execute("SELECT * FROM users WHERE username=?", (u,))
             data = c.fetchone()
@@ -58,89 +60,109 @@ if not st.session_state.user:
             elif not data:
                 c.execute("INSERT INTO users VALUES (?,?)", (u, h_p)); conn.commit()
                 st.session_state.user = u; st.query_params["u"] = u; st.rerun()
-            else: st.error("Hatalı!")
+            else: st.error("Kimlik doğrulama başarısız.")
     st.stop()
 
-# --- 🚀 SIDEBAR ---
+# --- YAN PANEL (KONTROL MERKEZİ) ---
 with st.sidebar:
-    st.title(f"🏎️ {st.session_state.user}")
-    if st.button("🔴 Çıkış"): 
+    st.subheader(f"👤 Oturum: {st.session_state.user}")
+    if st.button("Güvenli Çıkış", use_container_width=True): 
         st.session_state.clear(); st.query_params.clear(); st.rerun()
+    
     st.divider()
-    st.subheader("🏁 Yarış Geçmişi")
-    c.execute("SELECT konu, icerik, link, motor FROM aramalar WHERE kullanici=? ORDER BY tarih DESC LIMIT 10", (st.session_state.user,))
-    for k, i, l, m in c.fetchall():
-        if st.button(f"{m} | {k[:15]}...", key=f"h_{k}_{l[-5:]}", use_container_width=True):
-            st.session_state.bilgi, st.session_state.konu, st.session_state.motor = i, k, m
+    # MOTOR SEÇİMİ (V1 VE V2)
+    st.subheader("⚙️ Motor Seçimi")
+    st.session_state.aktif_motor = st.radio(
+        "Veri Kaynağını Belirleyin:",
+        ["V1 (Wikipedia)", "V2 (Ekşi Sözlük)"],
+        help="V1 Akademik, V2 Toplumsal perspektif sunar."
+    )
+    
+    st.divider()
+    st.subheader("📂 Sorgu Geçmişi")
+    c.execute("SELECT konu, icerik, motor FROM aramalar WHERE kullanici=? ORDER BY tarih DESC LIMIT 15", (st.session_state.user,))
+    for k, i, m in c.fetchall():
+        if st.button(f"[{m}] {k[:18]}", key=f"h_{k}_{datetime.datetime.now().microsecond}", use_container_width=True):
+            st.session_state.bilgi, st.session_state.konu = i, k
             st.rerun()
 
-# --- 🏎️ ANA MOTORLAR ---
-st.markdown("<h2 style='color:#b91c1c;'>TürkAI 2000 Motor Bilgi Üssü</h2>", unsafe_allow_html=True)
+# --- ANA ARAŞTIRMA MODÜLÜ ---
+st.markdown("<h1 style='color: #1e3a8a;'>TürkAI Araştırma Paneli v100</h1>", unsafe_allow_html=True)
 
-msg = st.chat_input("Aranacak konu veya 'hesapla ...' yazın")
+# HESAPLAMA NOTU
+st.caption("Matematiksel işlemler için sorgu başına 'hesapla' ekleyiniz. Örn: hesapla (250*4)/2")
 
-if msg:
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/110.0.0.0 Safari/537.36'}
+sorgu = st.chat_input("Araştırmak istediğiniz konuyu giriniz...")
+
+if sorgu:
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'}
     
-    # 🔢 MOTOR 1: HESAPLAYICI
-    if msg.lower().startswith("hesapla"):
+    # MATEMATİKSEL MOTOR
+    if sorgu.lower().startswith("hesapla"):
         try:
-            res = eval(msg.lower().replace("hesapla", "").strip(), {"__builtins__": {}}, {})
-            st.session_state.bilgi = f"🔢 Hesaplama Sonucu: {res}"
-            st.session_state.konu = "Matematik Motoru"; st.session_state.motor = "HESAP"; st.rerun()
-        except: st.error("Hatalı işlem!")
+            islem = sorgu.lower().replace("hesapla", "").strip()
+            sonuc = eval(islem, {"__builtins__": {}}, {})
+            st.session_state.bilgi = f"Matematiksel Analiz Sonucu:\nİşlem: {islem}\nSonuç: {sonuc}"
+            st.session_state.konu = "Matematiksel Analiz"
+            st.rerun()
+        except: st.error("Geçersiz matematiksel ifade.")
 
-    # 🌍 MOTOR 2 & 3: BİLGİ ARAŞTIRMA
-    else:
-        col_w, col_e = st.columns(2)
-        
-        with st.spinner("Motorlar ısınıyor..."):
-            # --- WIKIPEDIA ---
+    # V1: WIKIPEDIA MOTORU
+    elif st.session_state.aktif_motor == "V1 (Wikipedia)":
+        with st.spinner("V1 Akademik Motor Taraması Yapılıyor..."):
             try:
-                w_api = f"https://tr.wikipedia.org/w/api.php?action=query&list=search&srsearch={msg}&format=json"
-                w_data = requests.get(w_api, headers=headers).json()
-                if w_data['query']['search']:
-                    w_baslik = w_data['query']['search'][0]['title']
-                    w_link = f"https://tr.wikipedia.org/wiki/{w_baslik.replace(' ', '_')}"
-                    w_page = requests.get(w_link, headers=headers)
-                    w_soup = BeautifulSoup(w_page.text, 'html.parser')
-                    w_text = "\n\n".join([p.get_text() for p in w_soup.find_all('p') if len(p.get_text()) > 50][:4])
-                else: w_text = None
-            except: w_text = None
+                w_api = f"https://tr.wikipedia.org/w/api.php?action=query&list=search&srsearch={sorgu}&format=json"
+                w_res = requests.get(w_api, headers=headers).json()
+                if w_res['query']['search']:
+                    baslik = w_res['query']['search'][0]['title']
+                    link = f"https://tr.wikipedia.org/wiki/{baslik.replace(' ', '_')}"
+                    p_res = requests.get(link, headers=headers)
+                    soup = BeautifulSoup(p_res.text, 'html.parser')
+                    paragraflar = [p.get_text() for p in soup.find_all('p') if len(p.get_text()) > 60]
+                    icerik = "\n\n".join(paragraflar[:6])
+                    
+                    st.session_state.bilgi, st.session_state.konu = icerik, baslik
+                    c.execute("INSERT INTO aramalar VALUES (?,?,?,?,?,?)", (st.session_state.user, baslik, icerik, str(datetime.datetime.now()), link, "V1"))
+                    conn.commit(); st.rerun()
+                else: st.warning("İlgili kayıt bulunamadı.")
+            except: st.error("V1 Motoru bağlantı hatası.")
 
-            # --- EKŞİ SÖZLÜK (Alternatif Motor) ---
+    # V2: EKŞİ SÖZLÜK MOTORU
+    elif st.session_state.aktif_motor == "V2 (Ekşi Sözlük)":
+        with st.spinner("V2 Toplumsal Bellek Taraması Yapılıyor..."):
             try:
-                e_link = f"https://eksisozluk.com/basliklar/ara?SearchForm.Keywords={msg}"
-                e_page = requests.get(e_link, headers=headers)
-                e_soup = BeautifulSoup(e_page.text, 'html.parser')
-                e_entry = e_soup.find('div', class_='content').get_text(separator='\n') if e_soup.find('div', class_='content') else "Sonuç bulunamadı."
-                e_text = e_entry[:1000] + "..."
-            except: e_text = "Sosyal motor şu an meşgul."
+                # Ciddi bir arama yapısı
+                search_url = f"https://eksisozluk.com/basliklar/ara?SearchForm.Keywords={sorgu}"
+                e_res = requests.get(search_url, headers=headers)
+                soup = BeautifulSoup(e_res.text, 'html.parser')
+                entry = soup.find('div', class_='content')
+                if entry:
+                    icerik = entry.get_text(separator='\n').strip()
+                    st.session_state.bilgi, st.session_state.konu = icerik, sorgu
+                    c.execute("INSERT INTO aramalar VALUES (?,?,?,?,?,?)", (st.session_state.user, sorgu, icerik, str(datetime.datetime.now()), search_url, "V2"))
+                    conn.commit(); st.rerun()
+                else: st.warning("V2 motorunda veri bulunamadı.")
+            except: st.error("V2 Motoru erişim hatası.")
 
-            # OTOMATİK KARAR VER VE KAYDET
-            if w_text:
-                st.session_state.bilgi, st.session_state.konu, st.session_state.motor = w_text, w_baslik, "WIKI"
-                c.execute("INSERT INTO aramalar VALUES (?,?,?,?,?,?)", (st.session_state.user, w_baslik, w_text, str(datetime.datetime.now()), w_link, "WIKI"))
-                conn.commit(); st.rerun()
-            elif e_text:
-                st.session_state.bilgi, st.session_state.konu, st.session_state.motor = e_text, msg, "EKŞİ"
-                c.execute("INSERT INTO aramalar VALUES (?,?,?,?,?,?)", (st.session_state.user, msg, e_text, str(datetime.datetime.now()), "Ekşi Sözlük", "EKŞİ"))
-                conn.commit(); st.rerun()
-
-# --- 🏁 SONUÇ EKRANI ---
+# --- SONUÇ VE RAPORLAMA ---
 if st.session_state.bilgi:
     st.divider()
     
-    # PDF Butonu (En üstte)
-    pdf_byt = pdf_olustur(st.session_state.konu, st.session_state.bilgi, st.session_state.motor)
+    # RAPORLAMA BUTONU
+    pdf_byt = pdf_olustur(st.session_state.konu, st.session_state.bilgi, st.session_state.aktif_motor)
     if pdf_byt:
-        st.download_button("📥 Bu bilgiyi pdf olarak indir(pdfyi düzenlemeyi unutmayın)", data=bytes(pdf_byt), file_name="turkai_rapor.pdf")
+        st.download_button(
+            label="📥 Bu bilgiyi pdf olarak indir(pdfyi düzenlemeyi unutmayın)",
+            data=bytes(pdf_byt),
+            file_name=f"TurkAI_Rapor_{st.session_state.konu}.pdf",
+            mime="application/pdf"
+        )
 
-    # Çift Panel Görünümü
-    c1, c2 = st.columns([3, 1])
-    with c1:
-        st.subheader(f"[{st.session_state.motor}] {st.session_state.konu}")
-        st.write(st.session_state.bilgi)
-    with c2:
-        st.metric("Motor Gücü", "2000 HP")
-        st.metric("Durum", "Aktif")
+    st.subheader(f"Analiz Konusu: {st.session_state.konu}")
+    st.write(st.session_state.bilgi)
+    
+    # ATIF PANELİ
+    if st.session_state.aktif_motor == "V1 (Wikipedia)":
+        st.caption(f"Veri Kaynağı: Wikipedia (Resmi/Akademik)")
+    elif st.session_state.aktif_motor == "V2 (Ekşi Sözlük)":
+        st.caption(f"Veri Kaynağı: Toplumsal Veri Tabanı (V2)")
