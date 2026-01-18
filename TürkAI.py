@@ -60,17 +60,14 @@ db_baslat()
 
 # --- 🧠 MATEMATİK VE AYIKLAMA MOTORU ---
 def matematiksel_islem_bul(metin):
-    # Metni küçük harfe çevir ve 'hesapla' kelimesini temizle
     temiz_metin = metin.lower().replace("hesapla", "").strip()
-    
-    # Cümle içindeki matematiksel kalıpları bul (Sayılar ve +, -, *, /, (, ) sembolleri)
-    # En az 3 karakterli bir matematiksel dizi arar (Örn: 2+2)
+    # Sayılar ve operatörleri içeren kalıbı bul
     bulunan = re.search(r"(\d+[\s\+\-\*\/\(\)\.]+\d+)", temiz_metin)
     
     if bulunan:
         islem = bulunan.group(0).strip()
         try:
-            # İşlemi güvenli bir şekilde hesapla
+            # İşlemi hesapla
             sonuc = eval(islem)
             return True, islem, sonuc
         except:
@@ -132,8 +129,8 @@ if not st.session_state.giris_yapildi:
             np = st.text_input("Yeni Şifre", type="password", key="r_p")
             if st.button("Kayıt Ol", use_container_width=True):
                 if len(nu) > 2 and len(np) > 3:
-                    if yeni_kayit(nu, np): st.success("Tamamdır! Giriş yapabilirsin.")
-                    else: st.error("Kullanıcı adı dolu.")
+                    if yeni_kayit(nu, np): st.success("Kayıt Başarılı!")
+                    else: st.error("Kullanıcı adı alınmış.")
     st.stop()
 
 # --- 🚀 ANA PANEL ---
@@ -143,7 +140,9 @@ with st.sidebar:
     st.markdown("📂 **Senin Arşivin**")
     arsiv = gecmis_getir(st.session_state.user)
     for idx, (konu_adi, icerik_metni) in enumerate(arsiv):
-        if st.button(f"🔍 {konu_adi}", use_container_width=True, key=f"h_{idx}"):
+        # Kayıt bir hesaplama mı yoksa bilgi mi diye kontrol et
+        emoji = "🔢" if "Matematiksel Sonuç" in icerik_metni else "🔍"
+        if st.button(f"{emoji} {konu_adi}", use_container_width=True, key=f"h_{idx}"):
             st.session_state.su_anki_konu = konu_adi
             st.session_state.analiz_sonucu = icerik_metni
             st.rerun()
@@ -163,23 +162,25 @@ if st.session_state.analiz_sonucu:
         st.markdown(f'<div class="sonuc-karti"><h3>📌 {st.session_state.su_anki_konu}</h3>{st.session_state.analiz_sonucu.replace(chr(10), "<br>")}</div>', unsafe_allow_html=True)
 
 # --- 📥 AKILLI ARAMA BARI ---
-st.caption("💡 İpucu: İşlem yapmak için başına 'hesapla' yazabilir veya direkt '10+5' gibi sorabilirsiniz.")
+st.caption("💡 İpucu: İşlem yapmak için 'hesapla 25*4' yazabilir veya direkt konuyu aratabilirsiniz.")
 sorgu = st.chat_input("Neyi araştırmak istersiniz?")
 
 if sorgu:
     if not guvenli_mi(sorgu):
         st.warning("⚠️ Lütfen profesyonel bir dil kullanın.")
     else:
-        # 1. ÖNCE İÇİNDE MATEMATİK VAR MI DİYE BAK
+        # 1. MATEMATİKSEL İŞLEM KONTROLÜ
         is_math, islem, sonuc = matematiksel_islem_bul(sorgu)
         
         if is_math:
             sonuc_metni = f"🔢 Matematiksel Sonuç \n\n İşlem: {islem} \n\n ✅ Cevap: {sonuc}"
+            # --- YENİ: HESAPLAMAYI VERİTABANINA KAYDET ---
+            analiz_kaydet(st.session_state.user, f"Hesapla: {islem}", sonuc_metni)
             st.session_state.analiz_sonucu = sonuc_metni
             st.session_state.su_anki_konu = "Hesaplama"
             st.rerun()
         
-        # 2. DEĞİLSE WIKIPEDIA'YA GİT
+        # 2. BİLGİ ARAMA
         else:
             with st.spinner("Bilgi havuzu taranıyor..."):
                 url = f"https://tr.wikipedia.org/wiki/{sorgu.strip().capitalize().replace(' ', '_')}"
