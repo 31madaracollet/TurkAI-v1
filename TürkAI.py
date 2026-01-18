@@ -11,12 +11,9 @@ import extra_streamlit_components as stx
 # --- ⚙️ SİSTEM AYARLARI ---
 st.set_page_config(page_title="TürkAI Pro", page_icon="🇹🇷", layout="wide")
 
-# --- 🍪 ÇEREZ VE GÜVENLİK ---
-@st.cache_resource
-def get_manager():
-    return stx.CookieManager()
-
-cookie_manager = get_manager()
+# --- 🍪 ÇEREZ YÖNETİMİ (HATA DÜZELTİLDİ) ---
+# Burada @st.cache_resource kullanmıyoruz, çünkü CookieManager bir bileşendir.
+cookie_manager = stx.CookieManager()
 
 def sifrele(sifre): 
     return hashlib.sha256(str.encode(sifre)).hexdigest()
@@ -33,35 +30,32 @@ def db_baslat():
 
 db_baslat()
 
-# --- 📄 PDF OLUŞTURUCU (Hata Giderildi) ---
+# --- 📄 PDF OLUŞTURUCU ---
 def pdf_olustur(baslik, icerik):
     try:
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("Arial", "B", 16)
-        # Türkçe karakterleri temizle/latin-1'e uyarla
         safe_baslik = baslik.encode('latin-1', 'ignore').decode('latin-1')
         safe_icerik = icerik.encode('latin-1', 'ignore').decode('latin-1')
-        
         pdf.cell(0, 10, safe_baslik, ln=True)
         pdf.ln(5)
         pdf.set_font("Arial", size=12)
         pdf.multi_cell(0, 10, safe_icerik)
-        
-        # Output byte string olarak döner
         return pdf.output()
-    except Exception as e:
-        return str(e)
+    except:
+        return None
 
 # --- 🔑 OTURUM YÖNETİMİ ---
 if "giris_yapildi" not in st.session_state:
     st.session_state.giris_yapildi = False
     st.session_state.user = ""
-    
-    val = cookie_manager.get(cookie="turkai_user")
-    if val:
-        st.session_state.user = val
-        st.session_state.giris_yapildi = True
+
+# Sayfa her yüklendiğinde çerezi kontrol et
+val = cookie_manager.get(cookie="turkai_user")
+if val and not st.session_state.giris_yapildi:
+    st.session_state.user = val
+    st.session_state.giris_yapildi = True
 
 # --- 🎨 ARAYÜZ ---
 st.markdown("""
@@ -75,25 +69,25 @@ st.markdown("""
 
 # --- 🔐 GİRİŞ VE KAYIT EKRANI ---
 if not st.session_state.giris_yapildi:
-    st.markdown("<h1 class='header'>🇹🇷 TÜRKAI v80.2</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='header'>🇹🇷 TÜRKAI v80.3</h1>", unsafe_allow_html=True)
     t1, t2 = st.tabs(["🔑 Giriş Yap", "📝 Kayıt Ol"])
     
     with t2:
         y_u = st.text_input("Kullanıcı Adı", key="reg_u")
         y_p = st.text_input("Şifre", type="password", key="reg_p")
-        if st.button("Kaydol"):
+        if st.button("Kaydol", use_container_width=True):
             if y_u and y_p:
                 conn = get_db(); c = conn.cursor()
                 try:
                     c.execute("INSERT INTO users VALUES (?,?)", (y_u, sifrele(y_p)))
-                    conn.commit(); st.success("Kayıt başarılı! Giriş sekmesine geçebilirsiniz.")
+                    conn.commit(); st.success("Kayıt başarılı! Giriş yapabilirsiniz.")
                 except: st.error("Bu isim alınmış!")
                 conn.close()
     
     with t1:
         u = st.text_input("Kullanıcı Adı", key="log_u")
         p = st.text_input("Şifre", type="password", key="log_p")
-        if st.button("Sistemi Başlat"):
+        if st.button("Sistemi Başlat", use_container_width=True):
             conn = get_db(); c = conn.cursor()
             c.execute("SELECT * FROM users WHERE username=? AND password=?", (u, sifrele(p)))
             if c.fetchone():
@@ -124,7 +118,7 @@ with st.sidebar:
     conn.close()
 
 # --- 💻 ANA EKRAN ---
-st.markdown("<h2 class='header'>TürkAI Araştırma Sistemi</h2>", unsafe_allow_html=True)
+st.markdown("<h2 class='header'>TürkAI Bilgi Sistemi</h2>", unsafe_allow_html=True)
 
 if st.session_state.get("analiz_sonucu"):
     if "🔢" in st.session_state.analiz_sonucu:
@@ -134,7 +128,7 @@ if st.session_state.get("analiz_sonucu"):
         
         # PDF OLUŞTUR VE İNDİR
         pdf_cikti = pdf_olustur(st.session_state.su_anki_konu, st.session_state.analiz_sonucu)
-        if isinstance(pdf_cikti, bytes):
+        if pdf_cikti:
             st.download_button(
                 label="📥 Bu Bilgiyi PDF Olarak İndir",
                 data=pdf_cikti,
@@ -162,8 +156,6 @@ if msg:
             r = requests.get(s_url, headers=h).json()
             if r.get('query', {}).get('search'):
                 baslik = r['query']['search'][0]['title']
-                wiki = requests.get(f"https://tr.wikipedia.org/wiki/{baslik.replace(' ', '_')}", headers=h).json() # Hata düzeltme
-                # İçerik çekme kısmını basitleştirdik
                 wiki_res = requests.get(f"https://tr.wikipedia.org/wiki/{baslik.replace(' ', '_')}", headers=h)
                 soup = BeautifulSoup(wiki_res.text, 'html.parser')
                 for j in soup(["sup", "table", "style", "script"]): j.decompose()
@@ -175,4 +167,4 @@ if msg:
                     conn.commit(); conn.close()
                     st.session_state.analiz_sonucu, st.session_state.su_anki_konu = bilgi, baslik
                     st.rerun()
-        except: st.error("Bağlantı hatası!")
+        except: st.error("Wikipedia'ya ulaşılamadı!")
