@@ -2,6 +2,7 @@ import streamlit as st
 import requests
 from bs4 import BeautifulSoup
 import random
+import re
 from fpdf import FPDF
 
 # --- 🧠 SİSTEM HAFIZASI ---
@@ -12,29 +13,43 @@ if "kullanici_adi" not in st.session_state:
 if "gecmis" not in st.session_state:
     st.session_state.gecmis = []
 
-# --- 🎨 TEMA AYARI ---
-def yerel_css():
-    st.markdown("""
-        <style>
-        .stButton>button { background-color: #e63946; color: white; border-radius: 10px; width: 100%; }
-        h1 { color: #e63946; }
-        .reportview-container { background: #f0f2f6; }
-        </style>
-    """, unsafe_allow_html=True)
+# --- 🧹 TEMİZLİK ARACI (Wikipedia İşaretlerini Siler) ---
+def metni_temizle(metin):
+    # [1], [2], [15] gibi kaynak işaretlerini temizler
+    temiz = re.sub(r'\[\d+\]', '', metin)
+    # Garip boşlukları ve satır başlarını düzenler
+    return temiz.strip()
 
-# --- 📄 PDF OLUŞTURUCU ---
+# --- 📄 PDF OLUŞTURUCU (Türkçe Karakter Destekli) ---
 def pdf_olustur(baslik, icerik, kullanici):
     pdf = FPDF()
     pdf.add_page()
+    # Standart fontlar Türkçe desteklemediği için latin-1 dönüşümü yapıyoruz
+    # Bu fonksiyon metindeki Türkçe karakterleri PDF'in anlayacağı dile çevirir
     pdf.set_font("Arial", "B", 16)
     pdf.cell(200, 10, txt="TurkAI Arastirma Raporu", ln=True, align='C')
     pdf.ln(10)
     pdf.set_font("Arial", size=12)
-    pdf.cell(200, 10, txt=f"Konu: {baslik}", ln=True)
-    pdf.cell(200, 10, txt=f"Arastirmaci: {kullanici}", ln=True)
+    
+    # Türkçe karakter hatası almamak için metni güvenli hale getiriyoruz
+    def safe_text(s):
+        return s.encode('latin-1', 'replace').decode('latin-1')
+
+    pdf.cell(200, 10, txt=safe_text(f"Konu: {baslik}"), ln=True)
+    pdf.cell(200, 10, txt=safe_text(f"Arastirmaci: {kullanici}"), ln=True)
     pdf.ln(5)
-    pdf.multi_cell(0, 10, txt=icerik.encode('latin-1', 'replace').decode('latin-1'))
+    pdf.multi_cell(0, 10, txt=safe_text(icerik))
     return pdf.output(dest='S').encode('latin-1')
+
+# --- 🎨 TEMA AYARI ---
+def yerel_css():
+    st.markdown("""
+        <style>
+        .stButton>button { background-color: #e63946; color: white; border-radius: 10px; width: 100%; font-weight: bold; }
+        h1 { color: #e63946; text-align: center; }
+        .stTextInput>div>div>input { border: 2px solid #e63946; }
+        </style>
+    """, unsafe_allow_html=True)
 
 # --- 🚪 GİRİŞ EKRANI ---
 if not st.session_state.giris_yapildi:
@@ -42,7 +57,7 @@ if not st.session_state.giris_yapildi:
     yerel_css()
     st.title("🇹🇷 TürkAI Analiz Merkezi")
     isim = st.text_input("Kanka adın nedir?", placeholder="Örn: Kaptan")
-    if st.button("Sistemi Başlat"):
+    if st.button("Sisteme Giriş Yap"):
         if len(isim) >= 2:
             st.session_state.kullanici_adi = isim
             st.session_state.giris_yapildi = True
@@ -56,62 +71,63 @@ yerel_css()
 # 👈 YAN PANEL
 st.sidebar.title("🕒 Kontrol Paneli")
 st.sidebar.success(f"👤 {st.session_state.kullanici_adi}")
-if st.sidebar.button("Çıkış Yap"):
+if st.sidebar.button("Güvenli Çıkış"):
     st.session_state.giris_yapildi = False
     st.rerun()
 
-st.sidebar.write("**Geçmiş:**")
+st.sidebar.divider()
+st.sidebar.write("**Geçmiş Aramalar:**")
 for g in st.session_state.gecmis[-5:]:
     st.sidebar.caption(f"• {g}")
 
-# --- ARAŞTIRMA MOTORU (Orijinal Mantık) ---
-st.title(f"🔍 Bilgi Tarayıcı")
+# --- ARAŞTIRMA MOTORU ---
+st.title(f"🔍 Bilgi Analiz ve Raporlama")
 
-KARA_LISTE = ["amk", "aq", "piç", "oç", "sg", "sik", "yarrak", "göt"] 
+KARA_LISTE = ["amk", "aq", "piç", "oç", "sg", "sik", "yarrak", "göt"]
 def temiz_mi(metin):
-    if not metin: return True
     return not any(kelime in metin.lower() for kelime in KARA_LISTE)
 
-konu = st.text_input("Araştırılacak Konu:", placeholder="Örn: Yapay Zeka")
+konu = st.text_input("Araştırılacak Konu Başlığı:", placeholder="Örn: Galaksi")
 
 if st.button("Analizi Başlat"):
     if konu and temiz_mi(konu):
-        with st.spinner("Wikipedia taranıyor..."):
+        with st.spinner("Veriler filtreleniyor ve işaretler temizleniyor..."):
             arama = konu.strip().capitalize().replace(' ', '_')
             url = f"https://tr.wikipedia.org/wiki/{arama}"
             try:
                 r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
                 if r.status_code == 200:
                     soup = BeautifulSoup(r.text, 'html.parser')
-                    paragraflar = [p.get_text().strip() for p in soup.find_all('p') if len(p.get_text()) > 60]
+                    paragraflar = [metni_temizle(p.get_text()) for p in soup.find_all('p') if len(p.get_text()) > 60]
                     
                     if paragraflar:
                         if konu not in st.session_state.gecmis:
                             st.session_state.gecmis.append(konu)
                         
                         # ANA SONUÇ
-                        st.success("✅ Temel Bilgi Bulundu")
+                        st.success(f"✅ {konu} hakkında temizlenmiş veriler hazır!")
                         st.info(paragraflar[0])
                         
-                        # --- 🟢 GERİ GELEN "HEPSİNİ GÖSTER" KISMI ---
-                        tam_metin = " ".join(paragraflar) # PDF için tüm metni hazırla
+                        # DETAYLI BİLGİ (HEPSİNİ GÖSTER)
+                        tam_metin = "\n\n".join(paragraflar[:10]) # İlk 10 paragrafı birleştir
                         if len(paragraflar) > 1:
-                            with st.expander("📖 Detaylı Bilgiyi Gör (Hepsini Göster)"):
-                                st.write(" ".join(paragraflar[1:6])) # Sonraki 5 paragrafı göster
+                            with st.expander("📖 Detaylı Bilgiyi Gör (Kaynaklar Temizlendi)"):
+                                st.write(tam_metin)
                         
-                        # PDF BUTONU (Tüm içeriği kapsar)
-                        pdf_data = pdf_olustur(konu, tam_metin[:2000], st.session_state.kullanici_adi)
-                        st.download_button("📄 Tüm Analizi PDF Olarak İndir", pdf_data, f"{konu}.pdf", "application/pdf")
+                        # PDF BUTONU
+                        pdf_data = pdf_olustur(konu, tam_metin[:3000], st.session_state.kullanici_adi)
+                        st.download_button("📄 Temiz Raporu PDF Olarak İndir", pdf_data, f"{konu}_Rapor.pdf", "application/pdf")
                     else:
-                        st.warning("İçerik çok kısa veya bulunamadı.")
+                        st.warning("Konu hakkında detaylı veri bulunamadı.")
                 else:
-                    st.error("Konu bulunamadı.")
+                    st.error("Wikipedia'da bu başlık bulunamadı.")
             except:
-                st.error("Bağlantı sorunu!")
+                st.error("Sunucu bağlantısı kurulamadı.")
     elif konu:
-        st.error("⚠️ Argo kelime tespit edildi!")
+        st.error("⚠️ Lütfen uygun bir dil kullanın.")
 
 st.divider()
-st.caption(f"TürkAI v45.0 | Kullanıcı: {st.session_state.kullanici_adi}")
+st.caption(f"TürkAI v45.0 | Araştırmacı: {st.session_state.kullanici_adi} | Hatasız Raporlama Modu")
+
 
 
