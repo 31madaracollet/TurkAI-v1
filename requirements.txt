@@ -6,3 +6,7 @@ fuzzywuzzy
 python-Levenshtein
 fpdf
 pandas
+streamlit
+requests
+beautifulsoup4
+fpdf
