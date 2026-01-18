@@ -12,13 +12,18 @@ import extra_streamlit_components as stx
 st.set_page_config(page_title="TürkAI Pro", page_icon="🇹🇷", layout="wide")
 
 # --- 🍪 ÇEREZ VE GÜVENLİK ---
-def get_manager(): return stx.CookieManager()
+@st.cache_resource
+def get_manager():
+    return stx.CookieManager()
+
 cookie_manager = get_manager()
 
-def sifrele(sifre): return hashlib.sha256(str.encode(sifre)).hexdigest()
+def sifrele(sifre): 
+    return hashlib.sha256(str.encode(sifre)).hexdigest()
 
 # --- 💾 VERİTABANI ---
-def get_db(): return sqlite3.connect('turkai_v80.db', check_same_thread=False)
+def get_db(): 
+    return sqlite3.connect('turkai_v80.db', check_same_thread=False)
 
 def db_baslat():
     conn = get_db(); c = conn.cursor()
@@ -28,26 +33,34 @@ def db_baslat():
 
 db_baslat()
 
-# --- 📄 PDF OLUŞTURUCU ---
+# --- 📄 PDF OLUŞTURUCU (Hata Giderildi) ---
 def pdf_olustur(baslik, icerik):
-    pdf = FPDF()
-    pdf.add_page()
-    # Not: Türkçe karakterler için Arial/latin-1 uyumu
-    pdf.set_font("Arial", "B", 16)
-    pdf.cell(0, 10, baslik.encode('latin-1', 'ignore').decode('latin-1'), ln=True)
-    pdf.ln(5)
-    pdf.set_font("Arial", size=12)
-    pdf.multi_cell(0, 10, icerik.encode('latin-1', 'ignore').decode('latin-1'))
-    return pdf.output()
+    try:
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", "B", 16)
+        # Türkçe karakterleri temizle/latin-1'e uyarla
+        safe_baslik = baslik.encode('latin-1', 'ignore').decode('latin-1')
+        safe_icerik = icerik.encode('latin-1', 'ignore').decode('latin-1')
+        
+        pdf.cell(0, 10, safe_baslik, ln=True)
+        pdf.ln(5)
+        pdf.set_font("Arial", size=12)
+        pdf.multi_cell(0, 10, safe_icerik)
+        
+        # Output byte string olarak döner
+        return pdf.output()
+    except Exception as e:
+        return str(e)
 
 # --- 🔑 OTURUM YÖNETİMİ ---
 if "giris_yapildi" not in st.session_state:
     st.session_state.giris_yapildi = False
     st.session_state.user = ""
-    # Çerezden kullanıcıyı hatırla
-    kayitli_user = cookie_manager.get(cookie="turkai_user")
-    if kayitli_user:
-        st.session_state.user = kayitli_user
+    
+    val = cookie_manager.get(cookie="turkai_user")
+    if val:
+        st.session_state.user = val
         st.session_state.giris_yapildi = True
 
 # --- 🎨 ARAYÜZ ---
@@ -62,32 +75,32 @@ st.markdown("""
 
 # --- 🔐 GİRİŞ VE KAYIT EKRANI ---
 if not st.session_state.giris_yapildi:
-    st.markdown("<h1 class='header'>🇹🇷 TÜRKAI v80.0</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='header'>🇹🇷 TÜRKAI v80.2</h1>", unsafe_allow_html=True)
     t1, t2 = st.tabs(["🔑 Giriş Yap", "📝 Kayıt Ol"])
     
     with t2:
         y_u = st.text_input("Kullanıcı Adı", key="reg_u")
         y_p = st.text_input("Şifre", type="password", key="reg_p")
-        if st.button("Kaydol", use_container_width=True):
+        if st.button("Kaydol"):
             if y_u and y_p:
                 conn = get_db(); c = conn.cursor()
                 try:
                     c.execute("INSERT INTO users VALUES (?,?)", (y_u, sifrele(y_p)))
-                    conn.commit(); st.success("Kayıt başarılı! Şimdi giriş yapabilirsin.")
-                except: st.error("Bu isim zaten alınmış!")
+                    conn.commit(); st.success("Kayıt başarılı! Giriş sekmesine geçebilirsiniz.")
+                except: st.error("Bu isim alınmış!")
                 conn.close()
     
     with t1:
         u = st.text_input("Kullanıcı Adı", key="log_u")
         p = st.text_input("Şifre", type="password", key="log_p")
-        if st.button("Sistemi Başlat", use_container_width=True):
+        if st.button("Sistemi Başlat"):
             conn = get_db(); c = conn.cursor()
             c.execute("SELECT * FROM users WHERE username=? AND password=?", (u, sifrele(p)))
             if c.fetchone():
                 cookie_manager.set("turkai_user", u, expires_at=datetime.datetime.now() + datetime.timedelta(days=7))
                 st.session_state.giris_yapildi, st.session_state.user = True, u
                 st.rerun()
-            else: st.error("Hatalı kullanıcı adı veya şifre!")
+            else: st.error("Hatalı!")
             conn.close()
     st.stop()
 
@@ -97,7 +110,7 @@ with st.sidebar:
     if st.button("➕ Yeni Sohbet", use_container_width=True):
         st.session_state.analiz_sonucu = None
         st.session_state.su_anki_konu = ""; st.rerun()
-    if st.button("🔴 Çıkış Yap", use_container_width=True):
+    if st.button("🔴 Çıkış", use_container_width=True):
         cookie_manager.delete("turkai_user")
         st.session_state.clear(); st.rerun()
     st.divider()
@@ -119,39 +132,40 @@ if st.session_state.get("analiz_sonucu"):
     else:
         st.markdown(f'<div class="sonuc-karti"><h3>🔍 {st.session_state.su_anki_konu}</h3>{st.session_state.analiz_sonucu.replace(chr(10), "<br>")}</div>', unsafe_allow_html=True)
         
-        # 📄 PDF İNDİR BUTONU
+        # PDF OLUŞTUR VE İNDİR
         pdf_cikti = pdf_olustur(st.session_state.su_anki_konu, st.session_state.analiz_sonucu)
-        st.download_button(
-            label="📥 Bu Bilgiyi PDF Olarak İndir",
-            data=bytes(pdf_cikti),
-            file_name=f"{st.session_state.su_anki_konu}.pdf",
-            mime="application/pdf"
-        )
+        if isinstance(pdf_cikti, bytes):
+            st.download_button(
+                label="📥 Bu Bilgiyi PDF Olarak İndir",
+                data=pdf_cikti,
+                file_name=f"{st.session_state.su_anki_konu}.pdf",
+                mime="application/pdf"
+            )
 
 # --- 📥 GİRİŞ MOTORU ---
 msg = st.chat_input("Bir konu yazın veya hesap yapın...")
 
 if msg:
-    # 1. HESAPLAMA
     math_match = re.search(r"(\d+[\s\+\-\*\/\(\)\.]+\d+)", msg)
     if math_match:
         try:
-            islem = math_match.group(0)
-            sonuc = eval(islem.replace('x', '*'), {"__builtins__": {}}, {})
-            res = f"🔢 Matematiksel Sonuç\n\n✅ Cevap: {sonuc}"
-            st.session_state.analiz_sonucu, st.session_state.su_anki_konu = res, "Hesaplama"; st.rerun()
+            islem = math_match.group(0).replace('x', '*')
+            sonuc = eval(islem, {"__builtins__": {}}, {})
+            st.session_state.analiz_sonucu = f"🔢 Matematiksel Sonuç\n\n✅ Cevap: {sonuc}"
+            st.session_state.su_anki_konu = "Hesaplama"; st.rerun()
         except: pass
 
-    # 2. WIKIPEDIA
-    with st.spinner("🔎 Wikipedia taranıyor..."):
+    with st.spinner("🔎 TürkAI Araştırıyor..."):
         try:
             h = {'User-Agent': 'Mozilla/5.0'}
             s_url = f"https://tr.wikipedia.org/w/api.php?action=query&list=search&srsearch={msg}&format=json"
-            r = requests.get(s_url, headers=h, timeout=10).json()
+            r = requests.get(s_url, headers=h).json()
             if r.get('query', {}).get('search'):
                 baslik = r['query']['search'][0]['title']
-                wiki = requests.get(f"https://tr.wikipedia.org/wiki/{baslik.replace(' ', '_')}", headers=h, timeout=10)
-                soup = BeautifulSoup(wiki.text, 'html.parser')
+                wiki = requests.get(f"https://tr.wikipedia.org/wiki/{baslik.replace(' ', '_')}", headers=h).json() # Hata düzeltme
+                # İçerik çekme kısmını basitleştirdik
+                wiki_res = requests.get(f"https://tr.wikipedia.org/wiki/{baslik.replace(' ', '_')}", headers=h)
+                soup = BeautifulSoup(wiki_res.text, 'html.parser')
                 for j in soup(["sup", "table", "style", "script"]): j.decompose()
                 txt = [p.get_text().strip() for p in soup.find_all('p') if len(p.get_text()) > 60]
                 if txt:
@@ -161,5 +175,4 @@ if msg:
                     conn.commit(); conn.close()
                     st.session_state.analiz_sonucu, st.session_state.su_anki_konu = bilgi, baslik
                     st.rerun()
-            else: st.warning("Sonuç bulunamadı.")
         except: st.error("Bağlantı hatası!")
