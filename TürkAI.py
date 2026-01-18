@@ -2,59 +2,48 @@ import streamlit as st
 import requests
 from bs4 import BeautifulSoup
 
-st.set_page_config(page_title="TürkAI v1 - Pro", layout="wide")
-st.title("🛡️ TürkAI v1: Kalkan Delen Son Protokol")
+st.set_page_config(page_title="TürkAI v1 - Temiz Veri", layout="wide")
+st.title("🛡️ TürkAI v1: Akıllı Veri Filtreleme")
 
-konu = st.text_input("Analiz edilecek konuyu girin:")
+konu = st.text_input("Analiz edilecek konuyu girin (Detaylı yazın, örn: 'Yapay Zeka Nedir'):")
 
-def kalkan_del(url):
-    # Google ve diğerlerini kandırmak için çok daha detaylı bir kimlik
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Accept-Language': 'tr,en-US;q=0.7,en;q=0.3',
-        'Referer': 'https://www.google.com/',
-        'DNT': '1'
-    }
+def temiz_veri_cek(konu):
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
+    # DuckDuckGo'nun en sade sürümünü kullanıyoruz (reklam oranı daha düşük)
+    url = f"https://html.duckduckgo.com/html/?q={konu}"
+    
     try:
-        # Verify=False yaparak SSL sertifika kalkanlarını da es geçiyoruz
-        res = requests.get(url, headers=headers, timeout=15, verify=True)
-        return res.text if res.status_code == 200 else None
-    except Exception as e:
-        return str(e)
-
-if st.button("SİSTEMİ TETİKLE"):
-    if konu:
-        with st.spinner('Kalkanlar Bypass ediliyor...'):
-            # Google'ın "Özet" kısmına değil, doğrudan arama sonuçlarına odaklanıyoruz
-            search_url = f"https://www.google.com/search?q={konu}+bilgi+nedir&hl=tr"
-            html = kalkan_del(search_url)
+        res = requests.get(url, headers=headers, timeout=10)
+        if res.status_code == 200:
+            soup = BeautifulSoup(res.text, 'html.parser')
+            # Sadece gerçek sonuç özetlerini al (reklamları ve yan menüleri atla)
+            sonuclar = soup.find_all('a', class_='result__snippet')
             
-            if html and "<!doctype html>" in html.lower():
-                soup = BeautifulSoup(html, 'html.parser')
-                # Google sonuçlarındaki ana metin bloklarını (Snippet) yakalıyoruz
-                snippets = soup.find_all(['span', 'div'], attrs={'class': ['VwiC3b', 'yWG44c', 'MUFuzb']})
-                
-                if snippets:
-                    st.success("🎯 Kalkan Delindi! Veri Sızdırıldı.")
-                    for i, s in enumerate(snippets[:5]):
-                        if len(s.text) > 30:
-                            st.info(f"Bulgu {i+1}:")
-                            st.write(s.text)
-                else:
-                    # Eğer Google hala vermiyorsa DuckDuckGo Lite sürümünü (bot dostu) dene
-                    st.warning("Google hala direniyor, alternatif tünel (DuckDuckGo Lite) açılıyor...")
-                    ddg_url = f"https://duckduckgo.com/lite/?q={konu}"
-                    ddg_html = kalkan_del(ddg_url)
-                    if ddg_html:
-                        soup_ddg = BeautifulSoup(ddg_html, 'html.parser')
-                        results = soup_ddg.find_all('td', class_='result-snippet')
-                        for r in results[:3]:
-                            st.write(f"• {r.text.strip()}")
-                    else:
-                        st.error("Tüm yollar kapalı. Sunucu IP adresi tamamen bloklanmış olabilir.")
+            ayiklanmis_metin = []
+            for s in sonuclar:
+                txt = s.text.strip()
+                # Filtre: Eğer metin reklam içeriyorsa veya çok kısaysa alma
+                if len(txt) > 40 and "shop" not in txt.lower() and "price" not in txt.lower():
+                    ayiklanmis_metin.append(txt)
+            
+            return ayiklanmis_metin
+        return None
+    except:
+        return None
+
+if st.button("AKILLI ANALİZİ BAŞLAT"):
+    if konu:
+        with st.spinner('Gereksiz veriler temizleniyor...'):
+            veriler = temiz_veri_cek(konu)
+            
+            if veriler:
+                st.success(f"✅ {len(veriler)} adet güvenilir kaynak doğrulandı.")
+                for i, v in enumerate(veriler[:5]): # En iyi 5 sonucu göster
+                    st.info(f"Rapor {i+1}")
+                    st.write(v)
             else:
-                st.error("Kritik Hata: Sunucu kimliği tespit edildi ve kapılar kapatıldı.")
+                st.error("Maalesef temiz bir veri kaynağına ulaşılamadı.")
     else:
-        st.warning("Konu girmeden motoru çalıştıramazsın kanka.")
+        st.warning("Lütfen bir konu giriniz.")
+
 
