@@ -10,30 +10,19 @@ import hashlib
 # --- ⚙️ SİSTEM AYARLARI ---
 st.set_page_config(page_title="TürkAI Pro", page_icon="🇹🇷", layout="wide")
 
-# --- 🛡️ GELİŞMİŞ TEMİZLİK VE FİLTRE MOTORU ---
-KARA_LISTE = ["amk", "aq", "pic", "sik", "yarrak", "got", "meme", "dassak", "ibne", "kahpe", "oros", "ananı"]
+# --- 🛡️ GÜVENLİK VE TEMİZLİK MOTORU ---
+KARA_LISTE = ["amk", "aq", "pic", "sik", "yarrak", "got", "meme", "dassak", "ibne", "kahpe", "oros"]
 
-def metni_temizle(metin):
-    """Bozuk karakterleri siler ama Yunanca (τέχνη) gibi dilleri korur."""
+def karakter_sigortasi(metin):
+    """Metni hem temizler hem de PDF/Ekran için güvenli hale getirir."""
     if not metin: return ""
-    
-    # 1. Gizli sistem karakterlerini ve Unicode bozukluklarını temizle
     metin = metin.replace('\xa0', ' ').replace('\u200b', '').replace('\u200e', '').replace('\u200f', '')
-    
-    # 2. Wikipedia kaynak numaralarını [1] temizle
     metin = re.sub(r'\[\d+\]', '', metin)
-    
-    # 3. SADECE GERÇEKTEN BOZUK (Görünmeyen) karakterleri sil. 
-    # Yunanca, Kiril ve Latin harflerini serbest bırakıyoruz.
-    # Bu regex; kontrol karakterlerini ve bazı anlamsız sembolleri hedefler.
     metin = "".join(ch for ch in metin if ch.isprintable())
-    
-    # 4. Gereksiz çift boşlukları temizle
-    metin = re.sub(r'\s+', ' ', metin).strip()
-    return metin
+    return re.sub(r'\s+', ' ', metin).strip()
 
 def kalkan(metin):
-    """Küfür kalkanı: Hileli yazımları (s.i.k, s1k) yakalar."""
+    """Küfür kalkanı."""
     t = metin.lower()
     tr_map = str.maketrans("şçğüöıİ", "scguoiI")
     t = t.translate(tr_map)
@@ -43,7 +32,7 @@ def kalkan(metin):
 
 # --- 💾 VERİTABANI ---
 def get_db():
-    return sqlite3.connect('turkai_v46.db', check_same_thread=False)
+    return sqlite3.connect('turkai_v48.db', check_same_thread=False)
 
 def db_baslat():
     conn = get_db(); c = conn.cursor()
@@ -53,114 +42,94 @@ def db_baslat():
 
 db_baslat()
 
-# --- 📄 PDF SİSTEMİ (UNİCODE DESTEKLİ) ---
+# --- 📄 PDF SİSTEMİ ---
 def pdf_yap(konu, icerik):
-    pdf = FPDF()
-    pdf.add_page()
-    def tr_icin_guvenli(m):
-        m = metni_temizle(m)
-        # PDF Arial fontu Yunanca karakterleri direkt desteklemeyebilir, 
-        # bu yüzden PDF'de bozulma olmaması için sembolleri koruyup formatı düzeltiyoruz.
-        map = {"İ":"I","ı":"i","Ş":"S","ş":"s","Ğ":"G","ğ":"g","Ü":"U","ü":"u","Ö":"O","ö":"o","Ç":"C","ç":"c"}
-        for k, v in map.items(): m = m.replace(k, v)
-        return m.encode('latin-1', 'replace').decode('latin-1')
-    
-    pdf.set_font("Arial", "B", 16); pdf.cell(0, 10, tr_icin_guvenli(konu), ln=1, align="C"); pdf.ln(10)
-    pdf.set_font("Arial", "", 12); pdf.multi_cell(0, 8, tr_icin_guvenli(icerik))
-    return pdf.output(dest='S').encode('latin-1')
+    try:
+        pdf = FPDF()
+        pdf.add_page()
+        def pdf_temiz(m):
+            m = karakter_sigortasi(m)
+            tr = {"İ":"I","ı":"i","Ş":"S","ş":"s","Ğ":"G","ğ":"g","Ü":"U","ü":"u","Ö":"O","ö":"o","Ç":"C","ç":"c"}
+            for k, v in tr.items(): m = m.replace(k, v)
+            return m.encode('latin-1', 'replace').decode('latin-1')
+        pdf.set_font("Arial", "B", 16); pdf.cell(0, 10, pdf_temiz(konu), ln=1, align="C"); pdf.ln(10)
+        pdf.set_font("Arial", "", 12); pdf.multi_cell(0, 8, pdf_temiz(icerik))
+        return pdf.output(dest='S').encode('latin-1')
+    except: return b"Error"
 
-# --- 🔑 GİRİŞ VE SESSION ---
+# --- 🔑 SESSION ---
 if "u" in st.query_params and "user" not in st.session_state:
-    st.session_state.user = st.query_params["u"]
-    st.session_state.giris_yapildi = True
+    st.session_state.user, st.session_state.giris_yapildi = st.query_params["u"], True
 
 if "giris_yapildi" not in st.session_state: st.session_state.giris_yapildi = False
 if "analiz_sonucu" not in st.session_state: st.session_state.analiz_sonucu = None
 if "su_anki_konu" not in st.session_state: st.session_state.su_anki_konu = ""
 
 # --- 🎨 ARAYÜZ ---
-st.markdown("""
-    <style>
-    .stApp { background-color: #ffffff; }
-    .turkai-header { color: #b91c1c; text-align: center; border-bottom: 3px solid #b91c1c; padding: 10px; font-weight: bold; }
-    .sonuc-karti { background: #f8fafc; padding: 25px; border-radius: 15px; border: 1px solid #e2e8f0; line-height: 1.8; color: #1e293b; }
-    .math-karti { background: #f0fdf4; padding: 20px; border-radius: 12px; border: 2px solid #22c55e; text-align: center; color: #166534; font-size: 1.4rem; font-weight: bold; }
-    </style>
-""", unsafe_allow_html=True)
+st.markdown("<style>.stApp{background:#fff;} .header{color:#b91c1c; text-align:center; border-bottom:3px solid #b91c1c; padding:10px;}</style>", unsafe_allow_html=True)
 
 if not st.session_state.giris_yapildi:
-    st.markdown("<h1 class='turkai-header'>🇹🇷 TÜRKAI v46.0 - EVRENSEL DESTEK</h1>", unsafe_allow_html=True)
-    col1, col2, col3 = st.columns([1, 1.2, 1])
-    with col2:
-        u = st.text_input("🤖 Adınız nedir?")
-        p = st.text_input("Şifreniz", type="password")
-        if st.button("Başlat", use_container_width=True):
+    st.markdown("<h1 class='header'>🇹🇷 TÜRKAI v48.0</h1>", unsafe_allow_html=True)
+    c1, c2, c3 = st.columns([1, 1.2, 1])
+    with c2:
+        u = st.text_input("🤖 Adınız?")
+        if st.button("Sistemi Aç", use_container_width=True):
             if kalkan(u) and len(u) > 1:
                 st.session_state.user, st.session_state.giris_yapildi = u, True
                 st.query_params["u"] = u
                 st.rerun()
-            else: st.error("⚠️ Uygunsuz veya boş isim!")
+            else: st.error("⚠️ Geçersiz isim!")
     st.stop()
 
-# --- 🚀 ANA PANEL ---
+# --- 🚀 YAN PANEL (HATA ÇÖZÜLDÜ) ---
 with st.sidebar:
     st.markdown(f"### 👤 {st.session_state.user}")
     if st.button("🔴 Çıkış"): st.session_state.clear(); st.query_params.clear(); st.rerun()
     st.divider()
-    st.markdown("📂 **Geçmiş**")
     conn = get_db(); c = conn.cursor()
-    c.execute("SELECT konu, icerik FROM aramalar WHERE kullanici=? ORDER BY tarih DESC LIMIT 15", (st.session_state.user,))
-    for k, i in c.fetchall():
-        if st.button(f"📌 {k[:18]}", use_container_width=True):
-            st.session_state.su_anki_konu, st.session_state.analiz_sonucu = k, i
+    # Tarih bilgisini de çekiyoruz
+    c.execute("SELECT konu, icerik, tarih FROM aramalar WHERE kullanici=? ORDER BY tarih DESC LIMIT 15", (st.session_state.user,))
+    for konu, icerik, tarih in c.fetchall():
+        # ÇÖZÜM: Her butona 'tarih' bilgisini içeren benzersiz bir key veriyoruz
+        if st.button(f"📌 {konu[:18]}", key=f"btn_{tarih}", use_container_width=True):
+            st.session_state.su_anki_konu, st.session_state.analiz_sonucu = konu, icerik
             st.rerun()
 
-st.markdown("<h2 class='turkai-header'>TürkAI Bilgi Merkezi</h2>", unsafe_allow_html=True)
+st.markdown("<h2 class='header'>TürkAI Bilgi Merkezi</h2>", unsafe_allow_html=True)
 
 if st.session_state.analiz_sonucu:
-    c1, c2 = st.columns([4, 1])
-    with c1:
-        st.markdown(f'<div class="sonuc-karti"><h3>🔍 {st.session_state.su_anki_konu}</h3>{st.session_state.analiz_sonucu.replace(chr(10), "<br>")}</div>', unsafe_allow_html=True)
-    with c2:
-        pdf_data = pdf_yap(st.session_state.su_anki_konu, st.session_state.analiz_sonucu)
-        st.download_button("📄 PDF İndir", data=pdf_data, file_name=f"TurkAI_{st.session_state.su_anki_konu}.pdf", use_container_width=True)
+    col_a, col_b = st.columns([4, 1])
+    with col_a:
+        st.markdown(f'<div style="background:#f8fafc; padding:20px; border-radius:10px; border:1px solid #ddd;">'
+                    f'<h3>🔍 {st.session_state.su_anki_konu}</h3>{st.session_state.analiz_sonucu.replace(chr(10), "<br>")}</div>', unsafe_allow_html=True)
+    with col_b:
+        data = pdf_yap(st.session_state.su_anki_konu, st.session_state.analiz_sonucu)
+        st.download_button("📄 PDF", data=data, file_name="TurkAI.pdf", use_container_width=True)
 
-# --- 📥 GİRİŞ MOTORU ---
-msg = st.chat_input("Bir konu yazın veya hesaplama yapın...")
-
+# --- 📥 ARAMA MOTORU ---
+msg = st.chat_input("Bir konu yazın...")
 if msg:
-    if not kalkan(msg):
-        st.error("🚨 TürkAI: Uygunsuz içerik engellendi!")
+    if not kalkan(msg): st.error("🚨 Uygunsuz!")
     else:
-        # HESAPLAMA
-        math_check = re.search(r"(\d+[\s\+\-\*\/\(\)\.]+\d+)", msg)
-        if math_check:
+        with st.spinner("🔎 Araştırılıyor..."):
             try:
-                islem = math_check.group(0); cevap = eval(islem, {"__builtins__": {}}, {})
-                res = f"🔢 Matematik Sonucu\n\nİşlem: {islem}\n✅ Cevap: {cevap}"
-                st.session_state.analiz_sonucu, st.session_state.su_anki_konu = res, "Hesaplama"; st.rerun()
-            except: pass
-
-        # ARŞİV ARAMA (WIKIPEDIA)
-        with st.spinner("🔎 Bilgiler analiz ediliyor..."):
-            try:
-                headers = {'User-Agent': 'Mozilla/5.0'}
+                h = {'User-Agent': 'Mozilla/5.0'}
                 s_url = f"https://tr.wikipedia.org/w/api.php?action=query&list=search&srsearch={msg}&format=json"
-                r = requests.get(s_url, headers=headers, timeout=10).json()
-                
+                r = requests.get(s_url, headers=h, timeout=10).json()
                 if r.get('query', {}).get('search'):
                     baslik = r['query']['search'][0]['title']
-                    wiki = requests.get(f"https://tr.wikipedia.org/wiki/{baslik.replace(' ', '_')}", headers=headers, timeout=10)
-                    if wiki.status_code == 200:
-                        soup = BeautifulSoup(wiki.text, 'html.parser')
-                        for j in soup(["sup", "table", "style", "script"]): j.decompose()
-                        paragraflar = [p.get_text().strip() for p in soup.find_all('p') if len(p.get_text()) > 60]
-                        if paragraflar:
-                            bilgi = metni_temizle("\n\n".join(paragraflar[:7]))
-                            conn = get_db(); c = conn.cursor()
-                            c.execute("INSERT INTO aramalar VALUES (?,?,?,?)", (st.session_state.user, baslik, bilgi, datetime.datetime.now()))
-                            conn.commit()
-                            st.session_state.analiz_sonucu, st.session_state.su_anki_konu = bilgi, baslik
-                            st.rerun()
-                st.warning("Sonuç bulunamadı.")
-            except Exception as e: st.error("🚨 Bağlantı hatası oluştu.")
+                    wiki = requests.get(f"https://tr.wikipedia.org/wiki/{baslik.replace(' ', '_')}", headers=h, timeout=10)
+                    soup = BeautifulSoup(wiki.text, 'html.parser')
+                    for j in soup(["sup", "table", "style", "script"]): j.decompose()
+                    txt = [p.get_text().strip() for p in soup.find_all('p') if len(p.get_text()) > 60]
+                    if txt:
+                        bilgi = karakter_sigortasi("\n\n".join(txt[:6]))
+                        # Kaydederken tam zamanı milisaniyesine kadar alıyoruz (Benzersiz ID için)
+                        su_an = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
+                        conn = get_db(); c = conn.cursor()
+                        c.execute("INSERT INTO aramalar VALUES (?,?,?,?)", (st.session_state.user, baslik, bilgi, su_an))
+                        conn.commit()
+                        st.session_state.analiz_sonucu, st.session_state.su_anki_konu = bilgi, baslik
+                        st.rerun()
+                st.warning("Bulunamadı.")
+            except: st.error("🚨 Hata!")
