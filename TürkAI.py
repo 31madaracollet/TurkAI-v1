@@ -3,17 +3,21 @@ import requests
 from bs4 import BeautifulSoup
 import random
 
-# --- 🧠 HAFIZA VE GİRİŞ AYARLARI (KODUNU BOZMADAN EKLEDİK) ---
+# --- 🧠 SİSTEM HAFIZASI VE GİRİŞ KONTROLÜ ---
+# Loglardaki KeyError hatalarını bu blok önler kanka.
 if "giris_yapildi" not in st.session_state:
     st.session_state.giris_yapildi = False
 if "kullanici_adi" not in st.session_state:
     st.session_state.kullanici_adi = ""
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
 
-# --- 🚪 GİRİŞ EKRANI ---
+# --- 🚪 GİRİŞ EKRANI (İSİM SORMA) ---
 if not st.session_state.giris_yapildi:
-    st.set_page_config(page_title="TürkAI Giriş", page_icon="🇹🇷")
-    st.title("🇹🇷 TürkAI Analiz Merkezi")
+    st.set_page_config(page_title="TürkAI Giriş", page_icon="👋")
+    st.title("🇹🇷 TürkAI Araştırma Merkezi")
     st.write("---")
+    
     isim_girisi = st.text_input("Kanka, adın veya lakabın nedir?", placeholder="Örn: Kaptan")
     if st.button("Sisteme Giriş Yap"):
         if len(isim_girisi) >= 2:
@@ -21,23 +25,27 @@ if not st.session_state.giris_yapildi:
             st.session_state.giris_yapildi = True
             st.rerun()
         else:
-            st.error("Lütfen geçerli bir isim gir kanka!")
+            st.error("Lütfen en az 2 harfli bir isim yaz kanka!")
     st.stop()
 
-# --- 🚀 ANA PANEL (SENİN KODUNUN BAŞLADIĞI YER) ---
+# --- 🚀 ANA PANEL (GİRİŞ YAPILINCA BURASI ÇALIŞIR) ---
 st.set_page_config(page_title="TürkAI v45.0 - Pro", page_icon="🇹🇷", layout="wide")
 
-# 👈 YAN PANEL (SIDEBAR) EKLEMESİ
+# 👈 YAN PANEL (SIDEBAR)
 st.sidebar.title("🕒 TürkAI Kontrol")
-st.sidebar.info(f"👤 Aktif Kullanıcı: {st.session_state.kullanici_adi}")
-if st.sidebar.button("Güvenli Çıkış"):
+st.sidebar.success(f"👤 Araştırmacı: {st.session_state.kullanici_adi}")
+
+if st.sidebar.button("Oturumu Kapat"):
     st.session_state.giris_yapildi = False
+    st.session_state.kullanici_adi = ""
     st.rerun()
 
 st.sidebar.divider()
-st.sidebar.write("Bu panelden kullanıcı bilgilerini görebilir ve oturumu yönetebilirsin kanka.")
+st.sidebar.write("**Geçmiş Aramalar:**")
+for i, eski_konu in enumerate(st.session_state.chat_history):
+    st.sidebar.info(f"{i+1}. {eski_konu}")
 
-# --- SENİN ORİJİNAL KODLARIN (DOKUNULMADI) ---
+# --- SENİN ORİJİNAL ARAŞTIRMA KODLARIN ---
 
 st.title(f"🇹🇷 TürkAI v45.0 - Hoş geldin, {st.session_state.kullanici_adi}!")
 
@@ -66,7 +74,9 @@ if st.button("Analizi Başlat"):
             st.error("⚠️ TürkAI: Uygunsuz içerik veya üslup tespit edildi. Analiz iptal edildi.")
         else:
             with st.spinner(f"🔎 {hitap}, kaynaklar taranıyor..."):
-                url = f"https://tr.wikipedia.org/wiki/{konu.replace(' ', '_')}"
+                # URL düzenleme ve Wikipedia araması
+                arama_metni = konu.strip().capitalize().replace(' ', '_')
+                url = f"https://tr.wikipedia.org/wiki/{arama_metni}"
                 try:
                     r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
                     if r.status_code == 200:
@@ -74,9 +84,13 @@ if st.button("Analizi Başlat"):
                         paragraflar = [p.get_text().strip() for p in soup.find_all('p') if len(p.get_text()) > 60]
                         
                         if paragraflar:
+                            # Geçmişe ekle
+                            if konu not in st.session_state.chat_history:
+                                st.session_state.chat_history.append(konu)
+                                
                             st.success(f"✅ {hitap}, veriler başarıyla analiz edildi.")
                             st.write("### 📖 Analiz Sonucu:")
-                            st.info(paragraflar[0]) # İlk paragrafı göster
+                            st.info(paragraflar[0]) 
                             if len(paragraflar) > 1:
                                 with st.expander("Detaylı Bilgiyi Gör"):
                                     st.write(" ".join(paragraflar[1:4]))
@@ -90,4 +104,5 @@ if st.button("Analizi Başlat"):
         st.warning("Lütfen bir konu başlığı giriniz.")
 
 st.divider()
-st.caption(f"TürkAI v45.0 | Kullanıcı: {st.session_state.kullanici_adi} | Güvenli ve Filtreli Yapay Zeka Arayüzü")
+st.caption(f"TürkAI v45.0 | Araştırmacı: {st.session_state.kullanici_adi} | Güvenli Hat")
+
