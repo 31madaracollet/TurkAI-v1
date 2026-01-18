@@ -9,14 +9,13 @@ from fpdf import FPDF
 # --- ⚙️ SİSTEM AYARLARI ---
 st.set_page_config(page_title="TürkAI Analiz Merkezi", page_icon="🇹🇷", layout="wide")
 
-# --- 🎨 ÖZEL TASARIM ---
+# --- 🎨 ÖZEL TASARIM (Sadece Kullanıcı Balon) ---
 st.markdown("""
     <style>
     .stApp { background-color: #ffffff; }
     h1, h2, h3 { color: #cc0000 !important; }
     [data-testid="stSidebar"] { background-color: #f8f9fa; border-right: 3px solid #cc0000; }
     
-    /* Kullanıcı Mesaj Balonu (Sağda) */
     .user-msg {
         background-color: #cc0000;
         color: white;
@@ -29,13 +28,13 @@ st.markdown("""
         box-shadow: 2px 2px 5px rgba(0,0,0,0.1);
     }
     
-    /* AI Rapor Alanı */
-    .ai-rapor {
+    .ai-rapor-alani {
         border-left: 5px solid #cc0000;
-        padding: 15px 25px;
-        background-color: #fdfdfd;
+        padding: 15px 20px;
+        background-color: #f9f9f9;
         margin-top: 10px;
-        line-height: 1.7;
+        line-height: 1.6;
+        color: #333;
     }
 
     div.stButton > button {
@@ -48,7 +47,7 @@ st.markdown("""
 
 # --- 💾 VERİTABANI ---
 def db_baslat():
-    conn = sqlite3.connect('turkai_v130_final.db', check_same_thread=False)
+    conn = sqlite3.connect('turkai_v135.db', check_same_thread=False)
     c = conn.cursor()
     c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS aramalar (kullanici TEXT, konu TEXT, icerik TEXT, tarih TEXT, motor TEXT)')
@@ -57,7 +56,7 @@ def db_baslat():
 
 conn, c = db_baslat()
 
-# --- 🔑 OTURUM YÖNETİMİ ---
+# --- 🔑 OTURUM KONTROLÜ ---
 if "user" not in st.session_state: st.session_state.user = None
 if "bilgi" not in st.session_state: st.session_state.bilgi = None
 if "konu" not in st.session_state: st.session_state.konu = ""
@@ -75,7 +74,7 @@ if not st.session_state.user:
             try:
                 c.execute("INSERT INTO users VALUES (?,?)", (u_in, h_p)); conn.commit()
                 st.session_state.user = u_in; st.rerun()
-            except: st.error("Bilgiler hatalı veya kullanıcı mevcut.")
+            except: st.warning("Bilgiler hatalı.")
     st.stop()
 
 # --- 🚀 YAN PANEL ---
@@ -83,7 +82,7 @@ with st.sidebar:
     st.title(f"👤 {st.session_state.user}")
     if st.button("🔴 Çıkış"): st.session_state.clear(); st.rerun()
     st.divider()
-    m_secim = st.radio("Analiz Motoru:", ["V1 (Wikipedia)", "V2 (Ansiklopedi/Bilgi)", "V3 (Hesap Makinesi)"])
+    m_secim = st.radio("Analiz Motoru:", ["V1 (Wikipedia)", "V2 (Sözlük/Ansiklopedi)", "V3 (Hesap Makinesi)"])
     if m_secim == "V3 (Hesap Makinesi)": st.info("💡 Not: Çarpma (*) sembolüdür.")
     st.divider()
     st.subheader("📂 Geçmiş")
@@ -94,51 +93,52 @@ with st.sidebar:
             st.rerun()
 
 # --- 💻 ÇALIŞMA ALANI ---
-st.markdown("## TürkAI Araştırma Terminali")
+st.markdown("## TürkAI Araştırma Paneli")
 sorgu = st.chat_input("Sorgunuzu buraya yazın...")
 
 if sorgu:
     st.session_state.son_sorgu = sorgu
     h = {'User-Agent': 'Mozilla/5.0'}
     
-    # --- V1: WIKIPEDIA ---
+    # --- MOTOR 1: WIKIPEDIA ---
     if m_secim == "V1 (Wikipedia)":
         try:
             r = requests.get(f"https://tr.wikipedia.org/w/api.php?action=query&list=search&srsearch={sorgu}&format=json", headers=h).json()
-            head = r['query']['search'][0]['title']
-            soup = BeautifulSoup(requests.get(f"https://tr.wikipedia.org/wiki/{head.replace(' ', '_')}").text, 'html.parser')
-            res = "\n\n".join([p.get_text() for p in soup.find_all('p') if len(p.get_text()) > 50][:4])
-            st.session_state.bilgi, st.session_state.konu = res, head
-        except: st.session_state.bilgi = "Konu bulunamadı."
+            if r['query']['search']:
+                head = r['query']['search'][0]['title']
+                soup = BeautifulSoup(requests.get(f"https://tr.wikipedia.org/wiki/{head.replace(' ', '_')}").text, 'html.parser')
+                info = "\n\n".join([p.get_text() for p in soup.find_all('p') if len(p.get_text()) > 40][:4])
+                st.session_state.bilgi, st.session_state.konu = info, head
+            else: st.session_state.bilgi = "Wikipedia üzerinde bu konuda sonuç bulunamadı."
+        except: st.session_state.bilgi = "Bilgi çekilirken bir sorun oluştu."
 
-    # --- V2: ANSİKLOPEDİ (GELİŞTİRİLMİŞ) ---
-    elif m_secim == "V2 (Ansiklopedi/Bilgi)":
+    # --- MOTOR 2: SÖZLÜK / ANSİKLOPEDİ ---
+    elif m_secim == "V2 (Sözlük/Ansiklopedi)":
         try:
-            # DuckDuckGo üzerinden özet bilgi çekme (Ansiklopedik özet)
-            r = requests.get(f"https://api.duckduckgo.com/?q={sorgu}&format=json&t=turkai", headers=h).json()
-            if r.get("Abstract"):
-                res = r["Abstract"]
-                st.session_state.bilgi, st.session_state.konu = res, sorgu.capitalize()
+            # DuckDuckGo üzerinden net ansiklopedik özet çekme
+            r = requests.get(f"https://api.duckduckgo.com/?q={sorgu}&format=json&t=turkai&no_html=1", headers=h).json()
+            if r.get("AbstractText"):
+                st.session_state.bilgi, st.session_state.konu = r["AbstractText"], sorgu.title()
             else:
-                # Yedek: Google Scholar benzeri bir yapı için basit bir özetleyici
-                st.session_state.bilgi = "Bu kavramla ilgili detaylı ansiklopedik veri bulunamadı, lütfen V1'i deneyin."
-        except: st.session_state.bilgi = "Servis şu an meşgul."
+                st.session_state.bilgi = "Sözlük/Ansiklopedi verisi bulunamadı. Lütfen daha genel bir terim deneyin."
+        except: st.session_state.bilgi = "Servis şu an yanıt vermiyor."
 
-    # --- V3: HESAP MAKİNESİ ---
+    # --- MOTOR 3: HESAP MAKİNESİ ---
     elif m_secim == "V3 (Hesap Makinesi)":
         try:
             temiz = "".join(c for c in sorgu if c in "0123456789+-*/(). ")
-            st.session_state.bilgi, st.session_state.konu = f"İşlem Sonucu: {eval(temiz, {'__builtins__': {}}, {})}", "Matematik"
-        except: st.session_state.bilgi = "İşlem anlaşılamadı."
+            res = eval(temiz, {"__builtins__": {}}, {})
+            st.session_state.bilgi, st.session_state.konu = f"İşlem Sonucu: {res}", "Matematik"
+        except: st.session_state.bilgi = "Matematiksel hata! Lütfen sadece sayı ve işlem girin."
 
     if st.session_state.bilgi:
         c.execute("INSERT INTO aramalar VALUES (?,?,?,?,?)", (st.session_state.user, st.session_state.konu, st.session_state.bilgi, str(datetime.datetime.now()), m_secim))
         conn.commit(); st.rerun()
 
-# --- 📊 GÖRÜNÜM ---
+# --- 📊 GÖRÜNÜM (Kullanıcı Balon & AI Rapor) ---
 if st.session_state.son_sorgu:
     st.markdown(f"<div class='user-msg'><b>Siz:</b><br>{st.session_state.son_sorgu}</div>", unsafe_allow_html=True)
 
 if st.session_state.bilgi:
-    st.markdown(f"### 🇹🇷 TürkAI Raporu: {st.session_state.konu}")
-    st.markdown(f"<div class='ai-rapor'>{st.session_state.bilgi}</div>", unsafe_allow_html=True)
+    st.markdown(f"### 🇹🇷 TürkAI Analizi: {st.session_state.konu}")
+    st.markdown(f"<div class='ai-rapor-alani'>{st.session_state.bilgi}</div>", unsafe_allow_html=True)
