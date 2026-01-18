@@ -22,9 +22,9 @@ def karakter_sigortasi(metin):
     metin = "".join(ch for ch in metin if ch.isprintable())
     return re.sub(r'\s+', ' ', metin).strip()
 
-# --- 💾 VERİTABANI (KULLANICI + GEÇMİŞ) ---
+# --- 💾 VERİTABANI ---
 def get_db():
-    return sqlite3.connect('turkai_master.db', check_same_thread=False)
+    return sqlite3.connect('turkai_master_v2.db', check_same_thread=False)
 
 def db_baslat():
     conn = get_db(); c = conn.cursor()
@@ -34,7 +34,7 @@ def db_baslat():
 
 db_baslat()
 
-# --- 🔑 SESSION (OTURUM) YÖNETİMİ ---
+# --- 🔑 SESSION YÖNETİMİ ---
 if "giris_yapildi" not in st.session_state: st.session_state.giris_yapildi = False
 if "user" not in st.session_state: st.session_state.user = ""
 if "analiz_sonucu" not in st.session_state: st.session_state.analiz_sonucu = None
@@ -48,68 +48,61 @@ st.markdown("""
     .header { color:#b91c1c; text-align:center; border-bottom:3px solid #b91c1c; padding:10px; font-weight:bold; }
     .sonuc-karti { background:#f8fafc; padding:25px; border-radius:15px; border:1px solid #e2e8f0; line-height:1.7; }
     .math-karti { background:#f0fdf4; padding:20px; border-radius:12px; border:2px solid #22c55e; text-align:center; color:#166534; font-size:1.4rem; font-weight:bold; margin-bottom:15px; }
-    .footer-uyari { text-align:center; color:#94a3b8; font-size:0.8rem; margin-top:50px; }
+    .kaynak-label { font-size:0.9rem; color:#2563eb; font-weight:bold; text-decoration:none; }
+    .footer-note { text-align:center; color:#64748b; font-size:0.85rem; margin-top:20px; font-style: italic; }
+    .footer-uyari { text-align:center; color:#94a3b8; font-size:0.8rem; margin-top:40px; border-top:1px solid #f1f5f9; padding-top:10px; }
     </style>
 """, unsafe_allow_html=True)
 
-# --- 🚪 GİRİŞ VE KAYIT EKRANI ---
+# --- 🔑 GİRİŞ VE KAYIT ---
 if not st.session_state.giris_yapildi:
-    st.markdown("<h1 class='header'>🇹🇷 TÜRKAI v60.0</h1>", unsafe_allow_html=True)
-    tab1, tab2 = st.tabs(["🔑 Giriş Yap", "📝 Kayıt Ol"])
-    
-    with tab2:
-        yeni_u = st.text_input("Yeni Kullanıcı Adı", key="reg_u")
-        yeni_p = st.text_input("Yeni Şifre", type="password", key="reg_p")
-        if st.button("Hesap Oluştur"):
-            if yeni_u and yeni_p and not any(k in yeni_u.lower() for k in KARA_LISTE):
+    st.markdown("<h1 class='header'>🇹🇷 TÜRKAI v61.0</h1>", unsafe_allow_html=True)
+    t1, t2 = st.tabs(["🔑 Giriş Yap", "📝 Kayıt Ol"])
+    with t2:
+        y_u = st.text_input("Kullanıcı Adı", key="reg_u")
+        y_p = st.text_input("Şifre", type="password", key="reg_p")
+        if st.button("Kaydol"):
+            if y_u and y_p:
                 conn = get_db(); c = conn.cursor()
                 try:
-                    c.execute("INSERT INTO users VALUES (?,?)", (yeni_u, sifrele(yeni_p)))
-                    conn.commit()
-                    st.success("✅ Kayıt başarılı! Giriş sekmesine geçebilirsiniz.")
-                except: st.error("❌ Bu kullanıcı adı zaten alınmış!")
+                    c.execute("INSERT INTO users VALUES (?,?)", (y_u, sifrele(y_p)))
+                    conn.commit(); st.success("Kayıt başarılı! Giriş yapabilirsiniz.")
+                except: st.error("Bu kullanıcı zaten var!")
                 conn.close()
-            else: st.error("⚠️ Geçersiz kullanıcı adı veya şifre!")
-
-    with tab1:
+    with t1:
         u = st.text_input("Kullanıcı Adı", key="log_u")
         p = st.text_input("Şifre", type="password", key="log_p")
-        if st.button("Sisteme Gir"):
+        if st.button("Giriş"):
             conn = get_db(); c = conn.cursor()
             c.execute("SELECT * FROM users WHERE username=? AND password=?", (u, sifrele(p)))
             if c.fetchone():
-                st.session_state.giris_yapildi = True
-                st.session_state.user = u
+                st.session_state.giris_yapildi, st.session_state.user = True, u
                 st.rerun()
-            else: st.error("❌ Hatalı kullanıcı adı veya şifre!")
+            else: st.error("Hatalı giriş!")
             conn.close()
     st.stop()
 
-# --- 🚀 YAN PANEL (OTURUM AÇIKKEN) ---
+# --- 🚀 YAN PANEL ---
 with st.sidebar:
     st.markdown(f"### 👤 {st.session_state.user}")
     if st.button("➕ Yeni Sohbet", use_container_width=True):
         st.session_state.analiz_sonucu = None
         st.session_state.su_anki_konu = ""; st.session_state.su_anki_kaynak = ""
         st.rerun()
-    
-    if st.button("🔴 Çıkış Yap", use_container_width=True):
-        st.session_state.giris_yapildi = False
-        st.rerun()
-        
+    if st.button("🔴 Çıkış Yap"): st.session_state.clear(); st.rerun()
     st.divider()
-    st.markdown("📂 **Geçmiş Aramalar**")
+    st.markdown("📂 **Geçmiş**")
     conn = get_db(); c = conn.cursor()
-    c.execute("SELECT konu, icerik, tarih, kaynak FROM aramalar WHERE kullanici=? ORDER BY tarih DESC LIMIT 20", (st.session_state.user,))
-    for g_konu, g_icerik, g_tarih, g_kaynak in c.fetchall():
-        if st.button(f"📌 {g_konu[:18]}", key=f"btn_{g_tarih}", use_container_width=True):
-            st.session_state.su_anki_konu, st.session_state.analiz_sonucu, st.session_state.su_anki_kaynak = g_konu, g_icerik, g_kaynak
+    c.execute("SELECT konu, icerik, tarih, kaynak FROM aramalar WHERE kullanici=? ORDER BY tarih DESC LIMIT 15", (st.session_state.user,))
+    for k, i, t, l in c.fetchall():
+        if st.button(f"📌 {k[:18]}", key=f"b_{t}", use_container_width=True):
+            st.session_state.su_anki_konu, st.session_state.analiz_sonucu, st.session_state.su_anki_kaynak = k, i, l
             st.rerun()
     conn.close()
 
-st.markdown("<h2 class='header'>TürkAI Akıllı Analiz Sistemi</h2>", unsafe_allow_html=True)
+# --- 🖥️ ANA EKRAN ---
+st.markdown("<h2 class='header'>TürkAI Bilgi ve Analiz</h2>", unsafe_allow_html=True)
 
-# --- 🖥️ SONUÇ EKRANI ---
 if st.session_state.analiz_sonucu:
     if "🔢" in st.session_state.analiz_sonucu:
         st.markdown(f'<div class="math-karti">{st.session_state.analiz_sonucu}</div>', unsafe_allow_html=True)
@@ -118,27 +111,30 @@ if st.session_state.analiz_sonucu:
             <div class="sonuc-karti">
                 <h3>🔍 {st.session_state.su_anki_konu}</h3>
                 {st.session_state.analiz_sonucu.replace(chr(10), "<br>")}
-                {f'<br><br><hr><b>🔗 Kaynak:</b> <a href="{st.session_state.su_anki_kaynak}" target="_blank">{st.session_state.su_anki_kaynak}</a>' if st.session_state.su_anki_kaynak else ""}
+                {f'<br><br><hr><b>🔗 Kaynak:</b> <a href="{st.session_state.su_anki_kaynak}" class="kaynak-label" target="_blank">Wikipedia</a>' if st.session_state.su_anki_kaynak else ""}
             </div>
         ''', unsafe_allow_html=True)
 
-# --- 📥 GİRİŞ MOTORU (HESAP MAKİNESİ + WIKI) ---
-msg = st.chat_input("Bir şey yazın (örn: 120*5 sonucu nedir?)...")
+# --- 📥 AKILLI GİRİŞ ---
+msg = st.chat_input("Mesajınızı yazın...")
+st.markdown("<div class='footer-note'>💡 Not: Çarpma işlemi için lütfen (*) işaretini kullanınız. (Örn: 5*4)</div>", unsafe_allow_html=True)
 
 if msg:
-    # 1. AKILLI HESAPLAMA (CÜMLE İÇİNDEN ÇEKER)
-    islem_bulucu = re.search(r"(\d+[\s\+\-\*\/\(\)\.]+\d+)", msg)
+    # 1. AKILLI HESAPLAMA (x harfini * ile otomatik düzeltme özelliği eklendi)
+    math_msg = msg.lower().replace('x', '*') 
+    islem_bulucu = re.search(r"(\d+[\s\+\-\*\/\(\)\.]+\d+)", math_msg)
+    
     if islem_bulucu:
         try:
-            islem = islem_bulucu.group(0)
-            cevap = eval(islem, {"__builtins__": {}}, {})
+            temiz_islem = islem_bulucu.group(0)
+            cevap = eval(temiz_islem, {"__builtins__": {}}, {})
             st.session_state.analiz_sonucu = f"🔢 Matematiksel Sonuç\n\nSoru: {msg}\n✅ Cevap: {cevap}"
             st.session_state.su_anki_konu = "Hesaplama"
             st.rerun()
         except: pass
 
-    # 2. ARAŞTIRMA MOTORU
-    with st.spinner("🔎 İnceleniyor..."):
+    # 2. ARAŞTIRMA
+    with st.spinner("🔎 Araştırılıyor..."):
         try:
             h = {'User-Agent': 'Mozilla/5.0'}
             res = requests.get(f"https://tr.wikipedia.org/w/api.php?action=query&list=search&srsearch={msg}&format=json", headers=h).json()
@@ -160,4 +156,4 @@ if msg:
             st.warning("Bilgi bulunamadı.")
         except: st.error("🚨 Sunucu hatası!")
 
-st.markdown("<div class='footer-uyari'>⚠️ TürkAI hata yapabilir. Önemli bilgileri kontrol etmenizi öneririz.</div>", unsafe_allow_html=True)
+st.markdown("<div class='footer-uyari'>⚠️ TürkAI hata yapabilir. Bilgileri doğrulamayı unutmayın.</div>", unsafe_allow_html=True)
