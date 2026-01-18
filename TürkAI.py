@@ -1,102 +1,76 @@
 import streamlit as st
 import requests
 from bs4 import BeautifulSoup
+from fuzzywuzzy import fuzz # Benzerlik algılayıcı
 import random
 
-# --- ⚙️ SİSTEM HAFIZASI VE GİRİŞ KONTROLÜ ---
-if "log" not in st.session_state: st.session_state.log = False
-if "username" not in st.session_state: st.session_state.username = ""
-if "chat_history" not in st.session_state: st.session_state.chat_history = []
+# --- SİSTEM AYARLARI ---
+st.set_page_config(page_title="TürkAI v60.0", layout="wide")
 
-# --- 🛡️ GÜVENLİK PROTOKOLÜ ---
-KARA_LISTE = [
-    "amk", "aq", "piç", "oç", "sg", "sik", "yarrak", "göt", "meme", "daşşak",
-    "ibne", "kahpe", "yavşak", "gerizekalı", "salak", "aptal", "it", "köpek",
-    "şerefsiz", "namussuz", "pezevenk", "fahişe", "mal", "oros", "ananı"
-]
+# --- HAFIZA (SESSION STATE) KURULUMU ---
+if "mesajlar" not in st.session_state:
+    st.session_state.mesajlar = [] # Sohbet geçmişi
+if "logged_in" not in st.session_state:
+    st.session_state.logged_in = False
 
-def temiz_mi(metin):
-    metin_kucuk = metin.lower()
-    for kelime in KARA_LISTE:
-        if kelime in metin_kucuk:
-            return False
+# --- GELİŞMİŞ GÜVENLİK (KELİME BENZERLİĞİ) ---
+KARA_LISTE = ["küfür1", "küfür2", "argo1"] # Burayı sen doldurursun kanka
+
+def akilli_filtre(metin):
+    kelimeler = metin.lower().split()
+    for kelime in kelimeler:
+        for yasak in KARA_LISTE:
+            # Benzerlik oranı %80 üzerindeyse yakala
+            if fuzz.ratio(kelime, yasak) > 80:
+                return False
     return True
 
-# --- 🚪 GİRİŞ EKRANI (İSİM SORMA) ---
-if not st.session_state.log:
-    st.set_page_config(page_title="TürkAI Giriş", page_icon="👋")
-    st.title("🇹🇷 TürkAI Analiz Merkezi")
-    st.divider()
-    
-    isim = st.text_input("Kanka, adın veya lakabın nedir?", placeholder="Örn: Kaptan")
-    if st.button("Sistemi Başlat"):
-        if len(isim) >= 2:
-            st.session_state.username = isim
-            st.session_state.log = True
+# --- GİRİŞ SİSTEMİ ---
+if not st.session_state.logged_in:
+    st.title("🔐 TürkAI Giriş")
+    user_mail = st.text_input("E-posta:")
+    if st.button("Sisteme Gir"):
+        if "@" in user_mail:
+            st.session_state.logged_in = True
+            st.session_state.user = user_mail
             st.rerun()
-        else:
-            st.error("Lütfen en az 2 harfli bir isim yaz kanka!")
     st.stop()
 
-# --- 🚀 ANA PANEL AYARLARI ---
-st.set_page_config(page_title="TürkAI v45.0 - Pro", page_icon="🇹🇷", layout="wide")
-
-# 👈 YAN PANEL (SIDEBAR)
+# --- ANA ARAYÜZ ---
 st.sidebar.title("🕒 Sohbet Geçmişi")
-st.sidebar.info(f"👤 Aktif: {st.session_state.username}")
+for m in st.session_state.mesajlar:
+    st.sidebar.write(f"🗨️ {m['soru'][:20]}...")
 
-if st.sidebar.button("Geçmişi Temizle"):
-    st.session_state.chat_history = []
-    st.rerun()
+st.title("🇹🇷 TürkAI v60.0 - Akıllı Analiz Paneli")
 
-st.sidebar.divider()
-# Sorulan soruları yan panelde listele
-for i, soru_gecmis in enumerate(st.session_state.chat_history):
-    st.sidebar.write(f"{i+1}. {soru_gecmis}")
+# --- SOHBET AKIŞI ---
+with st.container():
+    for m in st.session_state.mesajlar:
+        with st.chat_message("user"): st.write(m["soru"])
+        with st.chat_message("assistant"): st.write(m["cevap"])
 
-# --- ANA EKRAN İÇERİĞİ ---
-st.title(f"🇹🇷 TürkAI v45.0 - Hoş geldin, {st.session_state.username}!")
-hitaplar = ["Değerli Dostum", "Sayın Kullanıcı", "Kıymetli Arkadaşım"]
-hitap = random.choice(hitaplar)
+# --- GİRİŞ ALANI ---
+prompt = st.chat_input("Bir konu yazın veya soru sorun...")
 
-konu = st.text_input("Araştırmak istediğiniz konuyu giriniz:", placeholder="Örn: Uzay Teknolojileri")
-
-if st.button("Analizi Başlat"):
-    if konu:
-        if not temiz_mi(konu):
-            st.error("⚠️ TürkAI: Uygunsuz içerik veya üslup tespit edildi. Analiz iptal edildi.")
-        else:
-            with st.spinner(f"🔎 {hitap}, kaynaklar taranıyor..."):
-                # Wikipedia araması
-                arama_terimi = konu.strip().capitalize().replace(' ', '_')
-                url = f"https://tr.wikipedia.org/wiki/{arama_terimi}"
-                try:
-                    r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=10)
-                    if r.status_code == 200:
-                        soup = BeautifulSoup(r.text, 'html.parser')
-                        paragraflar = [p.get_text().strip() for p in soup.find_all('p') if len(p.get_text()) > 60]
-                        
-                        if paragraflar:
-                            # Geçmişe ekle
-                            if konu not in st.session_state.chat_history:
-                                st.session_state.chat_history.append(konu)
-                            
-                            st.success(f"✅ {hitap}, veriler başarıyla analiz edildi.")
-                            st.write("### 📖 Analiz Sonucu:")
-                            st.info(paragraflar[0]) # İlk paragraf
-                            
-                            if len(paragraflar) > 1:
-                                with st.expander("Detaylı Bilgiyi Gör"):
-                                    st.write(" ".join(paragraflar[1:4]))
-                        else:
-                            st.warning("⚠️ Bu konuda yeterli açıklama bulunamadı.")
-                    else:
-                        st.error("⚠️ Aranan konu bulunamadı. Lütfen kelimeyi kontrol edin.")
-                except:
-                    st.error("❌ Bağlantı hatası: Sunucuya ulaşılamıyor.")
+if prompt:
+    if not akilli_filtre(prompt):
+        st.error("⚠️ Hop! Kelime benzerliği üzerinden uygunsuz içerik tespit edildi. Lütfen üsluba dikkat.")
     else:
-        st.warning("Lütfen bir konu başlığı giriniz.")
+        # Wikipedia Analiz Motoru
+        url = f"https://tr.wikipedia.org/wiki/{prompt.replace(' ', '_')}"
+        try:
+            res = requests.get(url, timeout=5)
+            if res.status_code == 200:
+                soup = BeautifulSoup(res.text, 'html.parser')
+                p = soup.find_all('p')
+                cevap = p[1].text[:1000] if len(p) > 1 else "Üzgünüm, bu konuda detaylı veri bulamadım."
+            else:
+                cevap = "Aradığınız başlıkta bir kaynak bulunamadı."
+        except:
+            cevap = "Bağlantı hatası oluştu."
 
-st.divider()
-st.caption(f"TürkAI v45.0 | Kullanıcı: {st.session_state.username} | Güvenli Analiz Hattı")
+        # Hafızaya Kaydet
+        st.session_state.mesajlar.append({"soru": prompt, "cevap": cevap})
+        st.rerun() # Sayfayı yenileyip mesajı ekrana basar
+
 
