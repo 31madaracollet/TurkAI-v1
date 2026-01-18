@@ -10,13 +10,11 @@ import hashlib
 # --- ⚙️ SİSTEM AYARLARI ---
 st.set_page_config(page_title="TürkAI Pro", page_icon="🇹🇷", layout="wide")
 
-# --- 💾 VERİTABANI MOTORU (ADLİ SİCİL EKLENDİ) ---
+# --- 💾 VERİTABANI MOTORU ---
 def db_baslat():
-    conn = sqlite3.connect('turkai_v48.db')
+    conn = sqlite3.connect('turkai_v49.db')
     c = conn.cursor()
-    # ihlal_sayisi ve ban_bitis eklendi
-    c.execute('''CREATE TABLE IF NOT EXISTS users 
-                 (username TEXT PRIMARY KEY, password TEXT, ihlal_sayisi INTEGER DEFAULT 0, ban_bitis TEXT)''')
+    c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS aramalar (kullanici TEXT, konu TEXT, icerik TEXT, tarih TEXT)')
     conn.commit()
     conn.close()
@@ -24,41 +22,8 @@ def db_baslat():
 def sifre_hashle(sifre):
     return hashlib.sha256(str.encode(sifre)).hexdigest()
 
-def kullanici_verisi_getir(user):
-    conn = sqlite3.connect('turkai_v48.db')
-    c = conn.cursor()
-    c.execute("SELECT ihlal_sayisi, ban_bitis FROM users WHERE username=?", (user,))
-    data = c.fetchone()
-    conn.close()
-    return data
-
-def ihlal_arttir(user):
-    conn = sqlite3.connect('turkai_v48.db')
-    c = conn.cursor()
-    c.execute("UPDATE users SET ihlal_sayisi = ihlal_sayisi + 1 WHERE username=?", (user,))
-    # İhlal sayısını al
-    c.execute("SELECT ihlal_sayisi FROM users WHERE username=?", (user,))
-    sayi = c.fetchone()[0]
-    
-    msg = ""
-    if sayi == 3:
-        msg = "⚠️ UYARI: 3. ihlalini yaptın. Kurallara uymazsan banlanacaksın!"
-    elif sayi == 7:
-        ban_vakti = (datetime.datetime.now() + datetime.timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
-        c.execute("UPDATE users SET ban_bitis = ? WHERE username=?", (ban_vakti, user))
-        msg = "🚫 BAN: 7. ihlal! Hesabın 24 saatliğine askıya alındı."
-    elif sayi >= 10:
-        c.execute("DELETE FROM users WHERE username=?", (user))
-        c.execute("DELETE FROM aramalar WHERE kullanici=?", (user))
-        msg = "💀 HESAP SİLİNDİ: 10 ihlal sınırı aşıldı. Hesabınız kalıcı olarak imha edildi."
-    
-    conn.commit()
-    conn.close()
-    return sayi, msg
-
-# Diğer DB fonksiyonları (Giriş, Kayıt, Analiz Kaydet vb.)
 def kullanici_kontrol(user, pwd):
-    conn = sqlite3.connect('turkai_v48.db')
+    conn = sqlite3.connect('turkai_v49.db')
     c = conn.cursor()
     c.execute("SELECT * FROM users WHERE username=? AND password=?", (user, sifre_hashle(pwd)))
     data = c.fetchone()
@@ -66,17 +31,17 @@ def kullanici_kontrol(user, pwd):
     return data
 
 def yeni_kayit(user, pwd):
-    conn = sqlite3.connect('turkai_v48.db')
+    conn = sqlite3.connect('turkai_v49.db')
     c = conn.cursor()
     try:
-        c.execute("INSERT INTO users (username, password, ihlal_sayisi) VALUES (?,?,0)", (user, sifre_hashle(pwd)))
+        c.execute("INSERT INTO users VALUES (?,?)", (user, sifre_hashle(pwd)))
         conn.commit()
         return True
     except: return False
     finally: conn.close()
 
 def analiz_kaydet(user, konu, icerik):
-    conn = sqlite3.connect('turkai_v48.db')
+    conn = sqlite3.connect('turkai_v49.db')
     c = conn.cursor()
     zaman = datetime.datetime.now().strftime("%d-%m-%Y %H:%M")
     c.execute("INSERT INTO aramalar VALUES (?,?,?,?)", (user, konu, icerik, zaman))
@@ -84,7 +49,7 @@ def analiz_kaydet(user, konu, icerik):
     conn.close()
 
 def gecmis_getir(user):
-    conn = sqlite3.connect('turkai_v48.db')
+    conn = sqlite3.connect('turkai_v49.db')
     c = conn.cursor()
     c.execute("SELECT konu, icerik FROM aramalar WHERE kullanici=? ORDER BY tarih DESC", (user,))
     data = c.fetchall()
@@ -93,28 +58,40 @@ def gecmis_getir(user):
 
 db_baslat()
 
-# --- 🛡️ GENİŞLETİLMİŞ ARGO FİLTRESİ (BAĞDAŞTIRMALI) ---
+# --- 🛡️ GELİŞMİŞ ARGO FİLTRESİ (SADECE ENGEL) ---
 KARA_LISTE = [
     "amk", "aq", "pic", "sik", "yarrak", "got", "meme", "dassak", "ibne", "kahpe", "serefsiz", 
     "orospu", "gay", "lez", "pust", "dalyarak", "amcik", "gavat", "yavsak", "it"
 ]
 
 def guvenli_mi(metin):
-    # Türkçe karakterleri İngilizce benzerlerine çevir ve temizle
+    # Harf oyunlarını bozmak için temizleme (a.m.k -> amk gibi)
     temiz = metin.lower().replace('ı','i').replace('ş','s').replace('ç','c').replace('ğ','g').replace('ü','u').replace('ö','o')
-    temiz = re.sub(r'[^a-z]', '', temiz) # Sadece harfleri bırak
+    temiz = re.sub(r'[^a-z]', '', temiz) 
     
     for kelime in KARA_LISTE:
-        if kelime in temiz: # Kelime bağdaştırma (kelimenin içinde geçiyor mu?)
+        if kelime in temiz:
             return False
     return True
 
-# --- 🎨 ARAYÜZ ---
-st.markdown("""<style>
+# --- 🎨 ARİF VE CİDDİ TASARIM (CSS) ---
+st.markdown("""
+    <style>
     .stApp { background-color: #FFFFFF; color: #1F2937; }
-    .sonuc-karti { background-color: #F9FAFB; padding: 25px; border-radius: 12px; border: 1px solid #E5E7EB; margin-bottom: 20px; }
-    h1 { color: #DC2626; text-align: center; }
-</style>""", unsafe_allow_html=True)
+    .main .block-container { max-width: 850px; padding-bottom: 10rem; }
+    .sonuc-karti {
+        background-color: #F9FAFB;
+        padding: 30px;
+        border-radius: 16px;
+        border: 1px solid #E5E7EB;
+        line-height: 1.8;
+        margin-bottom: 25px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    h1 { color: #DC2626; text-align: center; font-weight: 800; }
+    .stSidebar { background-color: #F3F4F6 !important; border-right: 1px solid #E5E7EB; }
+    </style>
+""", unsafe_allow_html=True)
 
 # --- 🧠 SESSION STATE ---
 if "giris_yapildi" not in st.session_state: st.session_state.giris_yapildi = False
@@ -124,67 +101,70 @@ if "su_anki_konu" not in st.session_state: st.session_state.su_anki_konu = ""
 
 # --- 🚪 GİRİŞ SİSTEMİ ---
 if not st.session_state.giris_yapildi:
-    st.markdown("<h1>TürkAI Güvenlik Merkezi</h1>", unsafe_allow_html=True)
+    st.markdown("<h1>TürkAI Profesyonel Giriş</h1>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        t1, t2 = st.tabs(["🔑 Giriş", "📝 Kayıt"])
+        t1, t2 = st.tabs(["🔑 Giriş Yap", "📝 Kayıt Ol"])
         with t1:
-            u = st.text_input("Kullanıcı Adı")
-            p = st.text_input("Şifre", type="password")
-            if st.button("Sisteme Giriş"):
-                res = kullanici_kontrol(u, p)
-                if res:
-                    # Ban kontrolü
-                    ihlal, ban_vakti = res[2], res[3]
-                    if ban_vakti and datetime.datetime.strptime(ban_vakti, "%Y-%m-%d %H:%M:%S") > datetime.datetime.now():
-                        st.error(f"Hesabınız banlanmıştır. Bitiş: {ban_vakti}")
-                    else:
-                        st.session_state.giris_yapildi = True
-                        st.session_state.user = u
-                        st.rerun()
+            u = st.text_input("Kullanıcı Adı", key="l_u")
+            p = st.text_input("Şifre", type="password", key="l_p")
+            if st.button("Sisteme Eriş", use_container_width=True):
+                if kullanici_kontrol(u, p):
+                    st.session_state.giris_yapildi = True
+                    st.session_state.user = u
+                    st.rerun()
                 else: st.error("Hatalı bilgiler.")
         with t2:
-            nu = st.text_input("Yeni Kullanıcı")
-            np = st.text_input("Yeni Şifre", type="password")
-            if st.button("Hesap Oluştur"):
-                if yeni_kayit(nu, np): st.success("Başarılı!")
-                else: st.error("Kullanıcı adı alınmış.")
+            nu = st.text_input("Yeni Kullanıcı", key="r_u")
+            np = st.text_input("Yeni Şifre", type="password", key="r_p")
+            if st.button("Hesabı Oluştur", use_container_width=True):
+                if len(nu) > 2 and len(np) > 3:
+                    if yeni_kayit(nu, np): st.success("Hesap açıldı!")
+                    else: st.error("Bu kullanıcı adı dolu.")
     st.stop()
 
 # --- 🚀 ANA PANEL ---
 with st.sidebar:
-    ihlal_bilgisi = kullanici_verisi_getir(st.session_state.user)
     st.markdown(f"### 👤 {st.session_state.user}")
-    st.markdown(f"🚩 **İhlal Puanı: {ihlal_bilgisi[0]} / 10**")
     st.divider()
-    
+    st.markdown("📂 **Senin Arşivin**")
     arsiv = gecmis_getir(st.session_state.user)
     for k, i in arsiv:
         if st.button(f"🔍 {k}", use_container_width=True, key=f"h_{k}"):
             st.session_state.su_anki_konu = k
             st.session_state.analiz_sonucu = i
-    
-    if st.button("Çıkış Yap"):
+
+    st.divider()
+    if st.button("Çıkış Yap", use_container_width=True):
         st.session_state.giris_yapildi = False
         st.rerun()
 
-st.title("TürkAI Araştırma Portalı")
+st.title("TürkAI Bilgi Merkezi")
 
+# ANALİZ GÖSTERİM ALANI
 if st.session_state.analiz_sonucu:
-    st.markdown(f'<div class="sonuc-karti"><h3>📌 {st.session_state.su_anki_konu}</h3>{st.session_state.analiz_sonucu.replace(chr(10), "<br>")}</div>', unsafe_allow_html=True)
+    st.markdown(f"""
+    <div class="sonuc-karti">
+        <h3 style="color: #DC2626; margin-top:0;">📌 Analiz: {st.session_state.su_anki_konu}</h3>
+        {st.session_state.analiz_sonucu.replace(chr(10), '<br>')}
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # PDF Butonu
+    pdf = FPDF(); pdf.add_page(); pdf.set_font("Arial", size=11)
+    safe_text = st.session_state.analiz_sonucu.encode('latin-1', 'ignore').decode('latin-1')
+    pdf.multi_cell(0, 10, txt=safe_text)
+    st.download_button("📄 PDF Analiz Raporunu İndir", pdf.output(dest='S').encode('latin-1'), f"{st.session_state.su_anki_konu}.pdf", "application/pdf")
+else:
+    st.markdown("<p style='text-align: center; opacity: 0.6;'>Hoş geldin. Bir konu yazarak profesyonel araştırmayı başlatabilirsin.</p>", unsafe_allow_html=True)
 
-# --- SORGULAMA ---
-sorgu = st.chat_input("Konu yazın...")
+# --- 📥 SABİT ALT BAR ---
+sorgu = st.chat_input("Araştırmak istediğiniz konuyu yazın...")
 
 if sorgu:
     if not guvenli_mi(sorgu):
-        sayi, mesaj = ihlal_arttir(st.session_state.user)
-        st.error(mesaj)
-        if sayi >= 10:
-            st.session_state.giris_yapildi = False
-            st.rerun()
+        st.warning("⚠️ Lütfen profesyonel bir dil kullanın. Uygunsuz kelimeler içeren sorgular yanıtlanmaz.")
     else:
-        # Wikipedia analizi ve kayıt işlemleri...
         with st.spinner("Analiz ediliyor..."):
             url = f"https://tr.wikipedia.org/wiki/{sorgu.strip().capitalize().replace(' ', '_')}"
             r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
@@ -197,7 +177,7 @@ if sorgu:
                     st.session_state.analiz_sonucu = ozet
                     st.session_state.su_anki_konu = sorgu
                     st.rerun()
-            else: st.error("Bulunamadı.")
-    
-
-
+                else: st.warning("İçerik bulunamadı.")
+            else: st.error("Konu başlığı mevcut değil.")
+ 
+           
