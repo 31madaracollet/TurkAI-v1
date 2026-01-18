@@ -6,7 +6,7 @@ import sqlite3
 import hashlib
 
 # --- ⚙️ SİSTEM AYARLARI ---
-st.set_page_config(page_title="TürkAI v195", page_icon="🇹🇷", layout="wide")
+st.set_page_config(page_title="TürkAI v200", page_icon="🇹🇷", layout="wide")
 
 # --- 🎨 CANVA MODERN TEMASI (Kırmızı Balon + Beyaz Yazı) ---
 st.markdown("""
@@ -14,7 +14,7 @@ st.markdown("""
     .stApp { background-color: #ffffff; }
     h1, h2, h3 { color: #cc0000 !important; font-family: 'Segoe UI', sans-serif !important; }
 
-    /* KULLANICI BALONU - BEYAZ YAZI KESİN ÇÖZÜM */
+    /* KULLANICI BALONU - BEYAZ YAZI */
     .user-box {
         background: linear-gradient(135deg, #cc0000 0%, #ff4d4d 100%);
         color: #ffffff !important;
@@ -26,7 +26,7 @@ st.markdown("""
         box-shadow: 0px 4px 12px rgba(204, 0, 0, 0.15);
         font-weight: 500;
     }
-    .user-box * { color: #ffffff !important; } /* İçindeki her şeyi beyaz yap */
+    .user-box * { color: #ffffff !important; }
 
     /* AI RAPOR BLOĞU */
     .ai-res-block {
@@ -52,7 +52,7 @@ st.markdown("""
 
 # --- 💾 VERİTABANI ---
 def db_baslat():
-    conn = sqlite3.connect('turkai_v195.db', check_same_thread=False)
+    conn = sqlite3.connect('turkai_v200.db', check_same_thread=False)
     c = conn.cursor()
     c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS aramalar (kullanici TEXT, konu TEXT, icerik TEXT, tarih TEXT, motor TEXT)')
@@ -80,26 +80,26 @@ if not st.session_state.user:
                 hp = hashlib.sha256(p.encode()).hexdigest()
                 c.execute("SELECT * FROM users WHERE username=? AND password=?", (u, hp))
                 if c.fetchone(): st.session_state.user = u; st.rerun()
-                else: st.error("Bilgiler hatalı kanka.")
+                else: st.error("Kullanıcı adı veya şifre yanlış kanka.")
         with t2:
             nu = st.text_input("Yeni Kullanıcı", key="r_u")
             np = st.text_input("Yeni Şifre", type="password", key="r_p")
-            if st.button("Kaydol", use_container_width=True):
+            if st.button("Kayıt Ol", use_container_width=True):
                 if nu and np:
                     try:
                         c.execute("INSERT INTO users VALUES (?,?)", (nu, hashlib.sha256(np.encode()).hexdigest()))
-                        conn.commit(); st.success("Kaydoldun kanka! Giriş yap.")
-                    except: st.error("Bu isim dolu kanka.")
+                        conn.commit(); st.success("Kaydoldun! Giriş yapabilirsin.")
+                    except: st.error("Bu kullanıcı adı alınmış.")
     st.stop()
 
 # --- 🚀 PANEL ---
 with st.sidebar:
     st.markdown(f"### 👤 {st.session_state.user}")
-    if st.button("🔴 Oturumu Kapat"): st.session_state.clear(); st.rerun()
+    if st.button("🔴 Çıkış"): st.session_state.clear(); st.rerun()
     st.divider()
-    m_secim = st.radio("📡 Motor Seçimi:", ["V1 (Wikipedia)", "V2 (Global/Sözlük)", "V3 (Hesap Makinesi)"])
+    m_secim = st.radio("📡 Analiz Modu:", ["V1 (Wikipedia)", "V2 (Global/Hibrit)", "V3 (Hesap Makinesi)"])
     st.divider()
-    st.subheader("📂 Geçmiş")
+    st.subheader("📂 Geçmiş Aramalar")
     c.execute("SELECT konu, icerik FROM aramalar WHERE kullanici=? ORDER BY tarih DESC LIMIT 10", (st.session_state.user,))
     for k, i in c.fetchall():
         if st.button(f"📌 {k[:20]}", key=f"h_{k}_{datetime.datetime.now().microsecond}", use_container_width=True):
@@ -114,6 +114,7 @@ if sorgu:
     st.session_state.son_sorgu = sorgu
     h = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36'}
     
+    # --- V1: Wikipedia ---
     if m_secim == "V1 (Wikipedia)":
         try:
             r = requests.get(f"https://tr.wikipedia.org/w/api.php?action=query&list=search&srsearch={sorgu}&format=json", headers=h).json()
@@ -121,35 +122,31 @@ if sorgu:
             soup = BeautifulSoup(requests.get(f"https://tr.wikipedia.org/wiki/{head.replace(' ', '_')}", headers=h).text, 'html.parser')
             info = "\n\n".join([p.get_text() for p in soup.find_all('p') if len(p.get_text()) > 60][:5])
             st.session_state.bilgi, st.session_state.konu = info, head
-        except: st.session_state.bilgi = "Wikipedia kaydı yok kanka."
+        except: st.session_state.bilgi = "Aradığın şeyi Wikipedia'da bulamadım kanka."
 
-    elif m_secim == "V2 (Global/Sözlük)":
+    # --- V2: Global Hibrit (Ördek + Google Mantığı) ---
+    elif m_secim == "V2 (Global/Hibrit)":
         try:
-            # V2 GÜÇLENDİRİLMİŞ GLOBAL ARAMA
-            search_url = f"https://duckduckgo.com/html/?q={sorgu}"
-            r_html = requests.get(search_url, headers=h)
-            soup = BeautifulSoup(r_html.text, 'html.parser')
-            
-            # 1. Deneme: Snippet ara
-            snippet = soup.find('a', class_='result__snippet')
-            if snippet:
-                bilgi = snippet.get_text()
+            # Önce Wikipedia'dan özet çekmeyi dene (En sağlamı)
+            wiki_r = requests.get(f"https://tr.wikipedia.org/api/rest_v1/page/summary/{sorgu.replace(' ', '_')}", headers=h).json()
+            if 'extract' in wiki_r:
+                bilgi = wiki_r['extract']
             else:
-                # 2. Deneme: Herhangi bir sonuç paragrafı ara
-                snippet = soup.find('div', class_='result__snippet')
-                bilgi = snippet.get_text() if snippet else None
-            
-            if not bilgi:
-                bilgi = "Global kaynaklarda bu terim için doğrudan bir özet bulunamadı. Aramayı daha basit yap kanka."
+                # Olmazsa DuckDuckGo HTML Scraping (Geliştirilmiş)
+                r_html = requests.get(f"https://duckduckgo.com/html/?q={sorgu}", headers=h)
+                soup = BeautifulSoup(r_html.text, 'html.parser')
+                snippet = soup.find('a', class_='result__snippet') or soup.find('div', class_='result__snippet')
+                bilgi = snippet.get_text() if snippet else "Global ağda net bir özet yakalayamadım kanka."
             
             st.session_state.bilgi, st.session_state.konu = bilgi, sorgu.title()
-        except: st.session_state.bilgi = "Global motor şu an meşgul kanka."
+        except: st.session_state.bilgi = "Global servislerde bir tıkanıklık var kanka."
 
+    # --- V3: Hesap Makinesi ---
     elif m_secim == "V3 (Hesap Makinesi)":
         try:
             temiz = "".join(c for c in sorgu if c in "0123456789+-*/(). ")
             st.session_state.bilgi, st.session_state.konu = f"Matematiksel Analiz: {eval(temiz, {'__builtins__': {}}, {})}", "Matematik"
-        except: st.session_state.bilgi = "Hesap yapılamadı."
+        except: st.session_state.bilgi = "Hesaplama hatası."
 
     if st.session_state.bilgi:
         c.execute("INSERT INTO aramalar VALUES (?,?,?,?,?)", (st.session_state.user, st.session_state.konu, st.session_state.bilgi, str(datetime.datetime.now()), m_secim))
@@ -160,5 +157,5 @@ if st.session_state.son_sorgu:
     st.markdown(f"<div class='user-box'><b>Siz:</b><br>{st.session_state.son_sorgu}</div>", unsafe_allow_html=True)
 
 if st.session_state.bilgi:
-    st.markdown(f"### 🇹🇷 Analiz: {st.session_state.konu}")
+    st.markdown(f"### 🇹🇷 Analiz Sonucu: {st.session_state.konu}")
     st.markdown(f"<div class='ai-res-block'>{st.session_state.bilgi}</div>", unsafe_allow_html=True)
