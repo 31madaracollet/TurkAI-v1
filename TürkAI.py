@@ -6,26 +6,17 @@ import sqlite3
 import hashlib
 
 # --- ⚙️ SİSTEM AYARLARI ---
-st.set_page_config(page_title="TürkAI v180", page_icon="🇹🇷", layout="wide")
+st.set_page_config(page_title="TürkAI v185", page_icon="🇹🇷", layout="wide")
 
-# --- 🎨 TEMATİK DETAYLAR (Beyaz Yazılı Kırmızı Balon Stili) ---
+# --- 🎨 TEMATİK DETAYLAR (Sadece Görsel & Kontrast) ---
 st.markdown("""
     <style>
     .stApp { background-color: #ffffff; }
     h1, h2, h3 { color: #cc0000 !important; font-family: 'Segoe UI', Tahoma, sans-serif !important; }
 
-    .giris-kart {
-        background: #fffafa;
-        border-radius: 20px;
-        padding: 35px;
-        border: 2px solid #cc0000;
-        text-align: center;
-        box-shadow: 0px 8px 20px rgba(204,0,0,0.05);
-    }
-
     .user-box {
         background: linear-gradient(135deg, #cc0000 0%, #ff4d4d 100%);
-        color: #ffffff !important;
+        color: #ffffff !important; /* BEYAZ YAZI */
         padding: 15px 22px;
         border-radius: 20px 20px 0px 20px;
         margin: 10px 0px 25px auto;
@@ -52,14 +43,14 @@ st.markdown("""
         background-color: #cc0000 !important;
         color: white !important;
         border-radius: 10px !important;
-        font-weight: bold !important;
+        font-weight: bold;
     }
     </style>
 """, unsafe_allow_html=True)
 
 # --- 💾 VERİTABANI ---
 def db_baslat():
-    conn = sqlite3.connect('turkai_v180.db', check_same_thread=False)
+    conn = sqlite3.connect('turkai_v185.db', check_same_thread=False)
     c = conn.cursor()
     c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS aramalar (kullanici TEXT, konu TEXT, icerik TEXT, tarih TEXT, motor TEXT)')
@@ -78,7 +69,7 @@ if not st.session_state.user:
     st.markdown("<br>", unsafe_allow_html=True)
     _, col2, _ = st.columns([1, 1.2, 1])
     with col2:
-        st.markdown("<div class='giris-kart'><h1>🇹🇷 TürkAI</h1><p>Milli Analiz Sistemi</p></div>", unsafe_allow_html=True)
+        st.markdown("<h1 style='text-align:center;'>🇹🇷 TürkAI</h1>", unsafe_allow_html=True)
         t1, t2 = st.tabs(["🔐 Giriş", "📝 Kayıt"])
         with t1:
             u = st.text_input("Kullanıcı", key="l_u")
@@ -119,33 +110,42 @@ sorgu = st.chat_input("Neyi analiz edelim kanka?")
 
 if sorgu:
     st.session_state.son_sorgu = sorgu
-    headers = {'User-Agent': 'Mozilla/5.0'}
+    # Global için daha sağlam headers
+    h = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/119.0.0.0 Safari/537.36'}
     
-    # --- V1: Wikipedia (Orijinal) ---
+    # --- V1: Wikipedia ---
     if m_secim == "V1 (Wikipedia)":
         try:
-            r = requests.get(f"https://tr.wikipedia.org/w/api.php?action=query&list=search&srsearch={sorgu}&format=json", headers=headers).json()
+            r = requests.get(f"https://tr.wikipedia.org/w/api.php?action=query&list=search&srsearch={sorgu}&format=json", headers=h).json()
             head = r['query']['search'][0]['title']
-            soup = BeautifulSoup(requests.get(f"https://tr.wikipedia.org/wiki/{head.replace(' ', '_')}", headers=headers).text, 'html.parser')
+            soup = BeautifulSoup(requests.get(f"https://tr.wikipedia.org/wiki/{head.replace(' ', '_')}", headers=h).text, 'html.parser')
             info = "\n\n".join([p.get_text() for p in soup.find_all('p') if len(p.get_text()) > 60][:5])
             st.session_state.bilgi, st.session_state.konu = info, head
-        except: st.session_state.bilgi = "Veri bulunamadı kanka."
+        except: st.session_state.bilgi = "Wikipedia'da veri bulunamadı kanka."
 
-    # --- V2: Global (Orijinal) ---
+    # --- V2: Global (Düzeltildi) ---
     elif m_secim == "V2 (Global/Sözlük)":
         try:
-            r = requests.get(f"https://api.duckduckgo.com/?q={sorgu}&format=json&no_html=1", headers=headers).json()
-            st.session_state.bilgi, st.session_state.konu = r.get("AbstractText", "Özet bulunamadı."), sorgu.title()
-        except: st.session_state.bilgi = "Bağlantı pürüzü çıktı."
+            # Önce API'den hızlıca çekmeyi dene
+            r = requests.get(f"https://api.duckduckgo.com/?q={sorgu}&format=json&no_html=1", headers=h).json()
+            bilgi = r.get("AbstractText")
+            
+            # Eğer API boş dönerse, manuel arama simülasyonu yap (Senin orijinal mantığın)
+            if not bilgi:
+                search_url = f"https://duckduckgo.com/html/?q={sorgu}"
+                soup = BeautifulSoup(requests.get(search_url, headers=h).text, 'html.parser')
+                snippet = soup.find('a', class_='result__snippet')
+                bilgi = snippet.get_text() if snippet else "Global kaynaklarda net bir sonuç bulunamadı kanka."
+            
+            st.session_state.bilgi, st.session_state.konu = bilgi, sorgu.title()
+        except: st.session_state.bilgi = "Global servis şu an yanıt vermiyor, tekrar dener misin?"
 
-    # --- V3: HESAP MAKİNESİ (Yeni) ---
+    # --- V3: Hesap Makinesi ---
     elif m_secim == "V3 (Hesap Makinesi)":
         try:
-            # Sadece güvenli karakterleri eval et
             temiz = "".join(c for c in sorgu if c in "0123456789+-*/(). ")
-            res = eval(temiz, {"__builtins__": {}}, {})
-            st.session_state.bilgi, st.session_state.konu = f"Matematiksel Analiz Sonucu: {res}", "Matematik"
-        except: st.session_state.bilgi = "Hesaplama hatası! Sayıları ve işlemleri kontrol et kanka."
+            st.session_state.bilgi, st.session_state.konu = f"Sonuç: {eval(temiz, {'__builtins__': {}}, {})}", "Matematik"
+        except: st.session_state.bilgi = "Hesaplamada hata çıktı."
 
     if st.session_state.bilgi:
         c.execute("INSERT INTO aramalar VALUES (?,?,?,?,?)", (st.session_state.user, st.session_state.konu, st.session_state.bilgi, str(datetime.datetime.now()), m_secim))
@@ -153,7 +153,7 @@ if sorgu:
 
 # --- 📊 GÖRÜNÜM ---
 if st.session_state.son_sorgu:
-    st.markdown(f"<div class='user-box'><b>Sorgu:</b><br>{st.session_state.son_sorgu}</div>", unsafe_allow_html=True)
+    st.markdown(f"<div class='user-box'><b>Siz:</b><br>{st.session_state.son_sorgu}</div>", unsafe_allow_html=True)
 
 if st.session_state.bilgi:
     st.markdown(f"### 🇹🇷 Analiz: {st.session_state.konu}")
