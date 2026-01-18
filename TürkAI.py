@@ -6,15 +6,14 @@ import sqlite3
 import hashlib
 
 # --- ⚙️ SİSTEM AYARLARI ---
-st.set_page_config(page_title="TürkAI v175", page_icon="🇹🇷", layout="wide")
+st.set_page_config(page_title="TürkAI v180", page_icon="🇹🇷", layout="wide")
 
-# --- 🎨 TEMATİK DETAYLAR (Sadece Görsel Müdahale) ---
+# --- 🎨 TEMATİK DETAYLAR (Beyaz Yazılı Kırmızı Balon Stili) ---
 st.markdown("""
     <style>
     .stApp { background-color: #ffffff; }
     h1, h2, h3 { color: #cc0000 !important; font-family: 'Segoe UI', Tahoma, sans-serif !important; }
 
-    /* Giriş Kartı */
     .giris-kart {
         background: #fffafa;
         border-radius: 20px;
@@ -24,10 +23,9 @@ st.markdown("""
         box-shadow: 0px 8px 20px rgba(204,0,0,0.05);
     }
 
-    /* KULLANICI BALONU (İstediğin Beyaz Yazı Detayı) */
     .user-box {
         background: linear-gradient(135deg, #cc0000 0%, #ff4d4d 100%);
-        color: #ffffff !important; /* Yazı artık bembeyaz */
+        color: #ffffff !important;
         padding: 15px 22px;
         border-radius: 20px 20px 0px 20px;
         margin: 10px 0px 25px auto;
@@ -38,7 +36,6 @@ st.markdown("""
     }
     .user-box b, .user-box strong { color: #ffffff !important; }
 
-    /* AI RAPOR ALANI */
     .ai-res-block {
         background: #fdfdfd;
         border-left: 8px solid #cc0000;
@@ -50,21 +47,19 @@ st.markdown("""
         box-shadow: 2px 2px 10px rgba(0,0,0,0.02);
     }
 
-    /* Sidebar ve Butonlar */
     [data-testid="stSidebar"] { background-color: #f8f9fa; border-right: 3px solid #cc0000; }
     div.stButton > button {
         background-color: #cc0000 !important;
         color: white !important;
         border-radius: 10px !important;
         font-weight: bold !important;
-        border: none !important;
     }
     </style>
 """, unsafe_allow_html=True)
 
 # --- 💾 VERİTABANI ---
 def db_baslat():
-    conn = sqlite3.connect('turkai_v175.db', check_same_thread=False)
+    conn = sqlite3.connect('turkai_v180.db', check_same_thread=False)
     c = conn.cursor()
     c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS aramalar (kullanici TEXT, konu TEXT, icerik TEXT, tarih TEXT, motor TEXT)')
@@ -100,7 +95,7 @@ if not st.session_state.user:
                 if nu and np:
                     try:
                         c.execute("INSERT INTO users VALUES (?,?)", (nu, hashlib.sha256(np.encode()).hexdigest()))
-                        conn.commit(); st.success("Kaydoldun, şimdi giriş yap kanka.")
+                        conn.commit(); st.success("Kaydoldun kanka, şimdi giriş yap.")
                     except: st.error("Bu kullanıcı adı dolu.")
     st.stop()
 
@@ -109,7 +104,7 @@ with st.sidebar:
     st.markdown(f"### 👤 {st.session_state.user}")
     if st.button("🔴 Oturumu Kapat"): st.session_state.clear(); st.rerun()
     st.divider()
-    m_secim = st.radio("📡 Motor Seçimi:", ["V1 (Wikipedia)", "V2 (Global/Sözlük)"])
+    m_secim = st.radio("📡 Motor Seçimi:", ["V1 (Wikipedia)", "V2 (Global/Sözlük)", "V3 (Hesap Makinesi)"])
     st.divider()
     st.subheader("📂 Geçmiş")
     c.execute("SELECT konu, icerik FROM aramalar WHERE kullanici=? ORDER BY tarih DESC LIMIT 10", (st.session_state.user,))
@@ -119,14 +114,14 @@ with st.sidebar:
             st.rerun()
 
 # --- 💻 ÇALIŞMA ALANI ---
-st.markdown("## 🔍 TürkAI Analiz Terminali")
+st.markdown("## 🔍 TürkAI Araştırma Terminali")
 sorgu = st.chat_input("Neyi analiz edelim kanka?")
 
 if sorgu:
     st.session_state.son_sorgu = sorgu
     headers = {'User-Agent': 'Mozilla/5.0'}
     
-    # --- MOTORLAR (SENİN VERDİĞİN ORİJİNAL KODLAR) ---
+    # --- V1: Wikipedia (Orijinal) ---
     if m_secim == "V1 (Wikipedia)":
         try:
             r = requests.get(f"https://tr.wikipedia.org/w/api.php?action=query&list=search&srsearch={sorgu}&format=json", headers=headers).json()
@@ -136,12 +131,21 @@ if sorgu:
             st.session_state.bilgi, st.session_state.konu = info, head
         except: st.session_state.bilgi = "Veri bulunamadı kanka."
 
+    # --- V2: Global (Orijinal) ---
     elif m_secim == "V2 (Global/Sözlük)":
         try:
-            # Senin orijinal global/sözlük API mantığın
             r = requests.get(f"https://api.duckduckgo.com/?q={sorgu}&format=json&no_html=1", headers=headers).json()
             st.session_state.bilgi, st.session_state.konu = r.get("AbstractText", "Özet bulunamadı."), sorgu.title()
         except: st.session_state.bilgi = "Bağlantı pürüzü çıktı."
+
+    # --- V3: HESAP MAKİNESİ (Yeni) ---
+    elif m_secim == "V3 (Hesap Makinesi)":
+        try:
+            # Sadece güvenli karakterleri eval et
+            temiz = "".join(c for c in sorgu if c in "0123456789+-*/(). ")
+            res = eval(temiz, {"__builtins__": {}}, {})
+            st.session_state.bilgi, st.session_state.konu = f"Matematiksel Analiz Sonucu: {res}", "Matematik"
+        except: st.session_state.bilgi = "Hesaplama hatası! Sayıları ve işlemleri kontrol et kanka."
 
     if st.session_state.bilgi:
         c.execute("INSERT INTO aramalar VALUES (?,?,?,?,?)", (st.session_state.user, st.session_state.konu, st.session_state.bilgi, str(datetime.datetime.now()), m_secim))
