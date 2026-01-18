@@ -22,26 +22,8 @@ def db_baslat():
 def sifre_hashle(sifre):
     return hashlib.sha256(str.encode(sifre)).hexdigest()
 
-def kullanici_kontrol(user, pwd):
-    conn = sqlite3.connect('turkai_pro_data.db')
-    c = conn.cursor()
-    c.execute("SELECT * FROM users WHERE username=? AND password=?", (user, sifre_hashle(pwd)))
-    data = c.fetchone()
-    conn.close()
-    return data
-
-def yeni_kayit(user, pwd):
-    conn = sqlite3.connect('turkai_pro_data.db')
-    c = conn.cursor()
-    try:
-        c.execute("INSERT INTO users VALUES (?,?)", (user, sifre_hashle(pwd)))
-        conn.commit()
-        return True
-    except: return False
-    finally: conn.close()
-
 def analiz_kaydet(user, konu, icerik):
-    conn = sqlite3.connect('turkai_pro_data.db')
+    conn = sqlite3.connect('turkai_pro_data.db', check_same_thread=False)
     c = conn.cursor()
     zaman = datetime.datetime.now().strftime("%d-%m-%Y %H:%M")
     c.execute("INSERT INTO aramalar VALUES (?,?,?,?)", (user, konu, icerik, zaman))
@@ -49,76 +31,97 @@ def analiz_kaydet(user, konu, icerik):
     conn.close()
 
 def gecmis_getir(user):
-    conn = sqlite3.connect('turkai_pro_data.db')
+    conn = sqlite3.connect('turkai_pro_data.db', check_same_thread=False)
     c = conn.cursor()
     c.execute("SELECT konu, icerik FROM aramalar WHERE kullanici=? ORDER BY tarih DESC", (user,))
     data = c.fetchall()
     conn.close()
     return data
 
+# --- 📄 PDF OLUŞTURUCU ---
+def pdf_olustur(baslik, icerik):
+    pdf = FPDF()
+    pdf.add_page()
+    # PDF için karakter temizliği (Hata vermemesi için)
+    t_baslik = baslik.replace('İ','I').replace('ı','i').replace('ş','s').replace('ğ','g').replace('ü','u').replace('ö','o').replace('ç','c')
+    t_icerik = icerik.replace('İ','I').replace('ı','i').replace('ş','s').replace('ğ','g').replace('ü','u').replace('ö','o').replace('ç','c')
+    t_icerik = re.sub('<[^<]+?>', '', t_icerik) # HTML temizle
+
+    pdf.set_font("Arial", 'B', 16)
+    pdf.cell(200, 10, txt=t_baslik, ln=True, align='C')
+    pdf.ln(10)
+    pdf.set_font("Arial", size=12)
+    pdf.multi_cell(0, 10, txt=t_icerik)
+    return pdf.output(dest='S').encode('latin-1')
+
+# --- 🧠 METİN SADELEŞTİRME ---
+def metni_temizle(metin):
+    # Akademik terimleri sadeleştir
+    sozluk = {"uygulayım bilimi": "teknoloji", "betimleme": "tanımlama", "gereksinim": "ihtiyaç"}
+    for eski, yeni in sozluk.items():
+        metin = metin.replace(eski, yeni).replace(eski.capitalize(), yeni.capitalize())
+    # [1], [20] gibi atıfları sil
+    metin = re.sub(r"\[\d+\]", "", metin)
+    return metin
+
 db_baslat()
 
-# --- 🔑 AKILLI OTURUM YÖNETİMİ (WEB İÇİN) ---
-# Eğer URL'de 'user' parametresi varsa otomatik giriş yap
-query_params = st.query_params
-if "user" in query_params and "giris_yapildi" not in st.session_state:
+# --- 🔑 OTURUM YÖNETİMİ ---
+if "user" in st.query_params and "giris_yapildi" not in st.session_state:
     st.session_state.giris_yapildi = True
-    st.session_state.user = query_params["user"]
+    st.session_state.user = st.query_params["user"]
 
-# Değişkenleri başlat (Hata almamak için)
 if "giris_yapildi" not in st.session_state: st.session_state.giris_yapildi = False
-if "user" not in st.session_state: st.session_state.user = ""
 if "analiz_sonucu" not in st.session_state: st.session_state.analiz_sonucu = None
 if "su_anki_konu" not in st.session_state: st.session_state.su_anki_konu = ""
 
-# --- 🧠 MATEMATİKSEL MOTOR ---
-def matematiksel_islem_bul(metin):
-    temiz = metin.lower().replace("hesapla", "").strip()
-    bulunan = re.search(r"(\d+[\s\+\-\*\/\(\)\.]+\d+)", temiz)
-    if bulunan:
-        islem = bulunan.group(0).strip()
-        try: return True, islem, eval(islem)
-        except: return False, None, None
-    return False, None, None
+# --- 🎨 TASARIM ---
+st.markdown("""
+    <style>
+    .sonuc-karti { background-color: #F9FAFB; padding: 25px; border-radius: 15px; border: 1px solid #E5E7EB; color: #111827; line-height: 1.7; }
+    .kaynakca { background-color: #F3F4F6; padding: 10px; border-radius: 5px; margin-top: 15px; font-size: 0.8rem; border-left: 4px solid #DC2626; }
+    </style>
+""", unsafe_allow_html=True)
 
 # --- 🚪 GİRİŞ EKRANI ---
 if not st.session_state.giris_yapildi:
-    st.markdown("<h1 style='text-align: center; color: #DC2626;'>TürkAI Web Portal</h1>", unsafe_allow_html=True)
+    st.title("🇹🇷 TürkAI Pro Giriş")
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        t1, t2 = st.tabs(["🔑 Giriş Yap", "📝 Kayıt Ol"])
-        with t1:
-            u = st.text_input("Kullanıcı Adı", key="l_u")
-            p = st.text_input("Şifre", type="password", key="l_p")
-            if st.button("Sisteme Eriş", use_container_width=True):
-                if kullanici_kontrol(u, p):
-                    st.session_state.giris_yapildi = True
-                    st.session_state.user = u
-                    st.query_params["user"] = u # URL'ye kazı (Sayfa yenilense de gitmez)
-                    st.rerun()
-                else: st.error("Hatalı bilgiler.")
-        with t2:
-            nu = st.text_input("Yeni Kullanıcı", key="r_u")
-            np = st.text_input("Yeni Şifre", type="password", key="r_p")
-            if st.button("Kayıt Ol", use_container_width=True):
-                if yeni_kayit(nu, np): st.success("Hesap hazır!")
-                else: st.error("Kullanıcı adı alınmış.")
+        u = st.text_input("Kullanıcı Adı")
+        p = st.text_input("Şifre", type="password")
+        if st.button("Sisteme Giriş Yap", use_container_width=True):
+            conn = sqlite3.connect('turkai_pro_data.db')
+            c = conn.cursor()
+            c.execute("SELECT * FROM users WHERE username=? AND password=?", (u, sifre_hashle(p)))
+            if c.fetchone():
+                st.session_state.giris_yapildi, st.session_state.user = True, u
+                st.query_params["user"] = u
+                st.rerun()
+            else: st.error("Hatalı bilgiler!")
+        
+        st.divider()
+        if st.button("Yeni Hesap Oluştur"):
+            try:
+                conn = sqlite3.connect('turkai_pro_data.db')
+                c = conn.cursor()
+                c.execute("INSERT INTO users VALUES (?,?)", (u, sifre_hashle(p)))
+                conn.commit()
+                st.success("Kayıt başarılı! Şimdi giriş yapabilirsin.")
+            except: st.error("Bu kullanıcı adı zaten var.")
     st.stop()
 
-# --- 🚀 ANA PANEL ---
+# --- 🚀 ANA PANEL (ARŞİV) ---
 with st.sidebar:
     st.markdown(f"### 👤 {st.session_state.user}")
     if st.button("🔴 Oturumu Kapat", use_container_width=True):
-        st.session_state.giris_yapildi = False
-        st.query_params.clear() # URL'den temizle
-        st.rerun()
+        st.session_state.clear(); st.query_params.clear(); st.rerun()
     
     st.divider()
-    st.markdown("📂 **Arşivin**")
+    st.markdown("📂 **Senin Arşivin**")
     arsiv = gecmis_getir(st.session_state.user)
     for idx, (konu_adi, icerik_metni) in enumerate(arsiv):
-        emoji = "🔢" if "Matematiksel Sonuç" in icerik_metni else "🔍"
-        if st.button(f"{emoji} {konu_adi}", use_container_width=True, key=f"h_{idx}"):
+        if st.button(f"📌 {konu_adi[:20]}", use_container_width=True, key=f"h_{idx}"):
             st.session_state.su_anki_konu = konu_adi
             st.session_state.analiz_sonucu = icerik_metni
             st.rerun()
@@ -127,30 +130,39 @@ with st.sidebar:
 st.title("TürkAI Bilgi Merkezi")
 
 if st.session_state.analiz_sonucu:
-    if "🔢 Matematiksel Sonuç" in st.session_state.analiz_sonucu:
-        st.success(st.session_state.analiz_sonucu)
-    else:
-        st.info(f"### 📌 {st.session_state.su_anki_konu}\n\n{st.session_state.analiz_sonucu}")
+    c_ana, c_pdf = st.columns([4, 1])
+    with c_ana:
+        st.markdown(f'<div class="sonuc-karti"><h3>🔍 {st.session_state.su_anki_konu}</h3>{st.session_state.analiz_sonucu.replace(chr(10), "<br>")}</div>', unsafe_allow_html=True)
+    with c_pdf:
+        pdf_data = pdf_olustur(st.session_state.su_anki_konu, st.session_state.analiz_sonucu)
+        st.download_button("📄 PDF İndir", data=pdf_data, file_name=f"{st.session_state.su_anki_konu}.pdf", mime="application/pdf")
 
-sorgu = st.chat_input("İşlem yapın (Örn: hesapla 5*5) veya konu aratın...")
+# --- 📥 AKILLI SORGULAMA ---
+sorgu = st.chat_input("Neyi hesaplamak veya araştırmak istersiniz?")
 
 if sorgu:
-    is_math, islem, sonuc = matematiksel_islem_bul(sorgu)
+    # 1. HESAPLAMA MI?
+    is_math = re.search(r"(\d+[\s\+\-\*\/\(\)\.]+\d+)", sorgu)
     if is_math:
-        res = f"🔢 Matematiksel Sonuç \n\n İşlem: {islem} \n\n ✅ Cevap: {sonuc}"
-        analiz_kaydet(st.session_state.user, f"Hesapla: {islem}", res)
-        st.session_state.analiz_sonucu = res
-        st.session_state.su_anki_konu = "Hesaplama"
-        st.rerun()
-    else:
-        with st.spinner("Bilgi taranıyor..."):
-            r = requests.get(f"https://tr.wikipedia.org/wiki/{sorgu.strip().capitalize().replace(' ', '_')}")
-            if r.status_code == 200:
-                soup = BeautifulSoup(r.text, 'html.parser')
-                metin = "\n".join([p.get_text() for p in soup.find_all('p')[:5] if len(p.get_text()) > 30])
-                if metin:
-                    analiz_kaydet(st.session_state.user, sorgu, metin)
-                    st.session_state.analiz_sonucu = metin
-                    st.session_state.su_anki_konu = sorgu
-                    st.rerun()
-            else: st.error("Sonuç bulunamadı.")
+        try:
+            islem = is_math.group(0)
+            cevap = eval(islem)
+            res = f"🔢 Matematiksel Sonuç \n\nİşlem: {islem} \n✅ Cevap: {cevap}"
+            analiz_kaydet(st.session_state.user, f"Hesapla: {islem}", res)
+            st.session_state.analiz_sonucu, st.session_state.su_anki_konu = res, "Hesaplama"
+            st.rerun()
+        except: pass
+
+    # 2. ARAMA MI?
+    with st.spinner("Bilgi taranıyor..."):
+        r = requests.get(f"https://tr.wikipedia.org/wiki/{sorgu.strip().capitalize().replace(' ', '_')}")
+        if r.status_code == 200:
+            soup = BeautifulSoup(r.text, 'html.parser')
+            metinler = [p.get_text() for p in soup.find_all('p') if len(p.get_text()) > 60]
+            if metinler:
+                ozet = metni_temizle("\n\n".join(metinler[:7]))
+                ozet += f"\n\n<div class='kaynakca'><b>📚 Kaynaklar:</b><br>1. Wikipedia - {sorgu.capitalize()}</div>"
+                analiz_kaydet(st.session_state.user, sorgu, ozet)
+                st.session_state.analiz_sonucu, st.session_state.su_anki_konu = ozet, sorgu
+                st.rerun()
+        else: st.error("Üzgünüm, bu başlıkta bir sonuç bulamadım.")
