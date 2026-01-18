@@ -3,7 +3,45 @@ import requests
 from bs4 import BeautifulSoup
 import random
 
-# --- GÜVENLİK PROTOKOLÜ ---
+# --- 🧠 HAFIZA VE GİRİŞ AYARLARI (KODUNU BOZMADAN EKLEDİK) ---
+if "giris_yapildi" not in st.session_state:
+    st.session_state.giris_yapildi = False
+if "kullanici_adi" not in st.session_state:
+    st.session_state.kullanici_adi = ""
+
+# --- 🚪 GİRİŞ EKRANI ---
+if not st.session_state.giris_yapildi:
+    st.set_page_config(page_title="TürkAI Giriş", page_icon="🇹🇷")
+    st.title("🇹🇷 TürkAI Analiz Merkezi")
+    st.write("---")
+    isim_girisi = st.text_input("Kanka, adın veya lakabın nedir?", placeholder="Örn: Kaptan")
+    if st.button("Sisteme Giriş Yap"):
+        if len(isim_girisi) >= 2:
+            st.session_state.kullanici_adi = isim_girisi
+            st.session_state.giris_yapildi = True
+            st.rerun()
+        else:
+            st.error("Lütfen geçerli bir isim gir kanka!")
+    st.stop()
+
+# --- 🚀 ANA PANEL (SENİN KODUNUN BAŞLADIĞI YER) ---
+st.set_page_config(page_title="TürkAI v45.0 - Pro", page_icon="🇹🇷", layout="wide")
+
+# 👈 YAN PANEL (SIDEBAR) EKLEMESİ
+st.sidebar.title("🕒 TürkAI Kontrol")
+st.sidebar.info(f"👤 Aktif Kullanıcı: {st.session_state.kullanici_adi}")
+if st.sidebar.button("Güvenli Çıkış"):
+    st.session_state.giris_yapildi = False
+    st.rerun()
+
+st.sidebar.divider()
+st.sidebar.write("Bu panelden kullanıcı bilgilerini görebilir ve oturumu yönetebilirsin kanka.")
+
+# --- SENİN ORİJİNAL KODLARIN (DOKUNULMADI) ---
+
+st.title(f"🇹🇷 TürkAI v45.0 - Hoş geldin, {st.session_state.kullanici_adi}!")
+
+# GÜVENLİK PROTOKOLÜ
 KARA_LISTE = [
     "amk", "aq", "piç", "oç", "sg", "sik", "yarrak", "göt", "meme", "daşşak",
     "ibne", "kahpe", "yavşak", "gerizekalı", "salak", "aptal", "it", "köpek",
@@ -17,14 +55,9 @@ def temiz_mi(metin):
             return False
     return True
 
-# --- WEB ARAYÜZÜ AYARLARI ---
-st.set_page_config(page_title="TürkAI v45.0 - Pro", page_icon="🇹🇷")
-st.title("🇹🇷 TürkAI v45.0 - Güvenli Analiz Hattı")
-
 hitaplar = ["Değerli Dostum", "Sayın Kullanıcı", "Kıymetli Arkadaşım"]
 hitap = random.choice(hitaplar)
 
-# --- ANA PANEL ---
 konu = st.text_input("Araştırmak istediğiniz konuyu giriniz:", placeholder="Örn: Uzay Teknolojileri")
 
 if st.button("Analizi Başlat"):
@@ -57,4 +90,4 @@ if st.button("Analizi Başlat"):
         st.warning("Lütfen bir konu başlığı giriniz.")
 
 st.divider()
-st.caption("TürkAI v45.0 | Güvenli ve Filtreli Yapay Zeka Arayüzü")
+st.caption(f"TürkAI v45.0 | Kullanıcı: {st.session_state.kullanici_adi} | Güvenli ve Filtreli Yapay Zeka Arayüzü")
