@@ -120,7 +120,7 @@ if sorgu:
             info, head = f"Sonuç: {res}", "Matematiksel İşlem"
             c.execute("INSERT INTO aramalar (kullanici, konu, icerik, tarih, motor) VALUES (?,?,?,?,?)", (st.session_state.user, head, info, str(datetime.datetime.now()), "V3"))
             conn.commit(); st.session_state.bilgi, st.session_state.konu = info, head; st.rerun()
-        except: st.error("Matematik hatası!")
+        except: st.error("")
     
     elif m_secim == "V1 (Wikipedia)":
         try:
@@ -131,7 +131,7 @@ if sorgu:
             info = "\n\n".join([p.get_text() for p in soup.find_all('p') if len(p.get_text()) > 60][:5])
             c.execute("INSERT INTO aramalar (kullanici, konu, icerik, tarih, motor, link) VALUES (?,?,?,?,?,?)", (st.session_state.user, head, info, str(datetime.datetime.now()), "V1", link))
             conn.commit(); st.session_state.bilgi, st.session_state.konu = info, head; st.rerun()
-        except: st.error("V1 verisi alınamadı.")
+        except: st.error("")
 
 # --- 📊 ÇIKTI ---
 if st.session_state.bilgi:
@@ -140,3 +140,4 @@ if st.session_state.bilgi:
     if pdf: st.download_button("📥 Bu bilgiyi pdf olarak indir(pdfyi düzenlemeyi unutmayın)", data=bytes(pdf), file_name="TurkAI_Rapor.pdf")
     st.subheader(st.session_state.konu)
     st.write(st.session_state.bilgi)
+
