@@ -7,3 +7,4 @@ python-Levenshtein
 pandas
 fpdf
 PyPDF2
+text streamlit
