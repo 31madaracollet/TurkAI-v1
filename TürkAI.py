@@ -7,12 +7,11 @@ import hashlib
 import urllib.parse
 import re
 from fpdf import FPDF
-from streamlit_javascript import st_javascript # Bunu requirements.txt'ye ekle kanka!
 
 # --- ⚙️ SİSTEM AYARLARI ---
 st.set_page_config(page_title="TürkAI Analiz Merkezi", page_icon="🇹🇷", layout="wide")
 
-# --- 🎨 CANVA MODERN TEMASI ---
+# --- 🎨 CANVA TEMASI (Orijinal Tasarım) ---
 st.markdown("""
     <style>
     .stApp { background-color: #ffffff; }
@@ -44,7 +43,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 💾 VERİTABANI VE FİLTRE ---
+# --- 🛠️ YARDIMCI ARAÇLAR ---
 def harf_filtresi(metin):
     return re.sub(r'[^\x00-\x7f\u00C0-\u017F\s.,!?():-]', '', metin)
 
@@ -58,15 +57,11 @@ def db_baslat():
 
 conn, c = db_baslat()
 
-# --- 🧠 AKILLI OTURUM YÖNETİMİ (JavaScript Destekli) ---
+# --- 🧠 OTURUM YÖNETİMİ ---
 if "user" not in st.session_state: st.session_state.user = None
-
-# Tarayıcı hafızasından kullanıcıyı çek (JavaScript ile)
-stored_user = st_javascript("localStorage.getItem('turkai_user');")
-
-if stored_user and st.session_state.user is None:
-    st.session_state.user = stored_user
-    st.rerun()
+if "bilgi" not in st.session_state: st.session_state.bilgi = None
+if "konu" not in st.session_state: st.session_state.konu = ""
+if "son_sorgu" not in st.session_state: st.session_state.son_sorgu = None
 
 # --- 🔑 GİRİŞ SİSTEMİ ---
 if not st.session_state.user:
@@ -83,8 +78,6 @@ if not st.session_state.user:
                 c.execute("SELECT * FROM users WHERE username=? AND password=?", (u_in, h_p))
                 if c.fetchone(): 
                     st.session_state.user = u_in
-                    # Kullanıcıyı tarayıcıya kaydet
-                    st_javascript(f"localStorage.setItem('turkai_user', '{u_in}');")
                     st.rerun()
                 else: st.error("Hatalı bilgi.")
         with t2:
@@ -96,31 +89,38 @@ if not st.session_state.user:
                 except: st.error("Bu isim dolu.")
     st.stop()
 
-# --- 🚀 ANA PANEL ---
+# --- 🚀 ANA PANEL (SIDEBAR) ---
 with st.sidebar:
     st.markdown(f"### 👤 {st.session_state.user}")
     if st.button("🔴 Oturumu Kapat"): 
-        st_javascript("localStorage.removeItem('turkai_user');")
-        st.session_state.clear()
+        st.session_state.user = None
         st.rerun()
     st.divider()
     m_secim = st.radio("📡 Analiz Modu:", ["V1 (Wikipedia)", "V2 (Global - Canavar)", "V3 (Matematik)"])
+    
     if m_secim == "V3 (Matematik)":
         st.markdown("<div class='mat-not'>⚠️ <b>NOT:</b> Çarpı yerine yıldız (*) kullan kanka.</div>", unsafe_allow_html=True)
+    
     st.divider()
+    st.markdown("💾 **Geçmiş Aramalar**")
     c.execute("SELECT konu, icerik FROM aramalar WHERE kullanici=? ORDER BY tarih DESC LIMIT 10", (st.session_state.user,))
-    for k, i in c.fetchall():
-        if st.button(f"📌 {k[:20]}", key=f"h_{k}", use_container_width=True):
+    # ÇAKIŞMA HATASINI ÇÖZEN KISIM:
+    for idx, (k, i) in enumerate(c.fetchall()):
+        if st.button(f"📌 {k[:20]}", key=f"btn_{idx}_{hash(k)}", use_container_width=True):
             st.session_state.bilgi, st.session_state.konu, st.session_state.son_sorgu = i, k, k
             st.rerun()
 
 # --- 💻 ÇALIŞMA ALANI ---
 st.markdown("## TürkAI Araştırma Terminali")
-st.markdown("<div class='kullanim-notu'>💡 <b>TÜYO:</b> Anahtar kelime yazın. ❌ Türk kimdir? ✅ <b>Türk</b></div>", unsafe_allow_html=True)
+st.markdown("""
+    <div class='kullanim-notu'>
+        💡 <b>TÜYO:</b> Anahtar kelime yazın.<br>
+        ❌ <i>"Türk kimdir?"</i> yerine ✅ <b>"Türk"</b> yazarsanız daha hızlı sonuç alırsınız kanka.
+    </div>
+""", unsafe_allow_html=True)
 
 sorgu = st.chat_input("Neyi analiz edelim kanka?")
 
-# --- MOTORLAR (ELLEMEDİM) ---
 if sorgu:
     st.session_state.son_sorgu = sorgu
     h = {'User-Agent': 'Mozilla/5.0'}
@@ -131,7 +131,7 @@ if sorgu:
             soup = BeautifulSoup(requests.get(f"https://tr.wikipedia.org/wiki/{head.replace(' ', '_')}", headers=h).text, 'html.parser')
             info = "\n\n".join([p.get_text() for p in soup.find_all('p') if len(p.get_text()) > 50][:4])
             st.session_state.bilgi, st.session_state.konu = harf_filtresi(info), head
-        except: st.session_state.bilgi = "Hata."
+        except: st.session_state.bilgi = "Bulunamadı."
     elif m_secim == "V2 (Global - Canavar)":
         try:
             wiki_api = f"https://tr.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(sorgu)}"
@@ -147,7 +147,11 @@ if sorgu:
         c.execute("INSERT INTO aramalar VALUES (?,?,?,?,?)", (st.session_state.user, st.session_state.konu, st.session_state.bilgi, str(datetime.datetime.now()), m_secim))
         conn.commit(); st.rerun()
 
-if st.session_state.get("bilgi"):
+# --- 📊 GÖRÜNÜM ---
+if st.session_state.son_sorgu:
+    st.markdown(f"<div class='user-msg'><b>Siz:</b><br>{st.session_state.son_sorgu}</div>", unsafe_allow_html=True)
+
+if st.session_state.bilgi:
     st.markdown(f"### 🇹🇷 Analiz: {st.session_state.konu}")
     st.markdown(f"<div class='ai-rapor-alani'>{st.session_state.bilgi}</div>", unsafe_allow_html=True)
     
@@ -164,4 +168,4 @@ if st.session_state.get("bilgi"):
         pdf.multi_cell(0, 10, txt=metin.encode('latin-1', 'replace').decode('latin-1'))
         return pdf.output(dest='S').encode('latin-1')
 
-    st.download_button("📄 PDF İndir", data=pdf_indir(), file_name=f"TurkAI_{st.session_state.konu}.pdf")
+    st.download_button("📄 PDF Olarak İndir", data=pdf_indir(), file_name=f"TurkAI_{st.session_state.konu}.pdf")
