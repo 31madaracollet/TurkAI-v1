@@ -9,7 +9,7 @@ import urllib.parse
 # --- ⚙️ SİSTEM AYARLARI ---
 st.set_page_config(page_title="TürkAI Analiz Merkezi", page_icon="🇹🇷", layout="wide")
 
-# --- 🎨 CANVA MODERN TEMASI (Kırmızı Balon + Beyaz Yazı) ---
+# --- 🎨 CANVA MODERN TEMASI (Dokunulmadı) ---
 st.markdown("""
     <style>
     .stApp { background-color: #ffffff; }
@@ -42,6 +42,16 @@ st.markdown("""
         background-color: #cc0000 !important; color: white !important;
         border-radius: 10px !important; font-weight: bold !important;
     }
+    /* Yeni Notlar İçin Stil */
+    .ozel-not {
+        background-color: #fff3f3; color: #cc0000; padding: 10px; 
+        border-radius: 10px; border: 1px dashed #cc0000; margin-bottom: 15px;
+        font-size: 0.85rem; text-align: center;
+    }
+    .kullanim-notu {
+        background-color: #f0f2f6; padding: 10px; border-radius: 10px;
+        border-left: 5px solid #cc0000; font-size: 0.9rem; margin-bottom: 10px;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -67,6 +77,10 @@ if not st.session_state.user:
     _, col2, _ = st.columns([1, 1.2, 1])
     with col2:
         st.markdown("<div class='giris-kapsayici'><h1>🇹🇷 TürkAI</h1></div>", unsafe_allow_html=True)
+        
+        # --- NOT 1: GİRİŞ UYARISI ---
+        st.markdown("<div class='ozel-not'>⚠️ Sayfayı yenileyince veya sayfayı kapatıp açtığınızda oturumunuz kapanır, şu an beta olduğu için çalışıyoruz.</div>", unsafe_allow_html=True)
+        
         t1, t2 = st.tabs(["🔐 Giriş", "📝 Kayıt"])
         with t1:
             u_in = st.text_input("Kullanıcı Adı", key="l_u")
@@ -91,6 +105,11 @@ with st.sidebar:
     if st.button("🔴 Çıkış"): st.session_state.clear(); st.rerun()
     st.divider()
     m_secim = st.radio("📡 Analiz Modu:", ["V1 (Wikipedia)", "V2 (Global - Canavar)", "V3 (Matematik)"])
+    
+    # --- NOT 2: MATEMATİK NOTU ---
+    if m_secim == "V3 (Matematik)":
+        st.markdown("<div class='ozel-not'>⚠️ <b>NOT:</b> Çarpı (x) yerine yıldız (<b>*</b>) kullan kanka.</div>", unsafe_allow_html=True)
+        
     st.divider()
     c.execute("SELECT konu, icerik FROM aramalar WHERE kullanici=? ORDER BY tarih DESC LIMIT 10", (st.session_state.user,))
     for k, i in c.fetchall():
@@ -100,6 +119,15 @@ with st.sidebar:
 
 # --- 💻 ÇALIŞMA ALANI ---
 st.markdown("## TürkAI Araştırma Terminali")
+
+# --- NOT 3: ANAHTAR KELİME NOTU ---
+st.markdown("""
+    <div class='kullanim-notu'>
+        💡 <b>TÜYO:</b> Araştırmak istediğiniz konunun anahtar kelimesini ya da direkt ismini yazınız.<br>
+        ❌ <i>"Türk kimdir?"</i> yerine ✅ <b>"Türk"</b> yazarsanız daha hızlı sonuç alırsınız kanka.
+    </div>
+""", unsafe_allow_html=True)
+
 sorgu = st.chat_input("Neyi analiz edelim kanka?")
 
 if sorgu:
@@ -116,22 +144,18 @@ if sorgu:
             st.session_state.bilgi, st.session_state.konu = info, head
         except: st.session_state.bilgi = "Sonuç bulunamadı."
 
-    # --- V2: GLOBAL (YENİLENMİŞ %100 ÇALIŞAN MOTOR) ---
+    # --- V2: GLOBAL ---
     elif m_secim == "V2 (Global - Canavar)":
         try:
-            # Önce Wikipedia Özetini dene (Hızlı ve kaliteli)
             wiki_api = f"https://tr.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(sorgu)}"
             r_wiki = requests.get(wiki_api, headers=h).json()
-            
             if 'extract' in r_wiki:
                 bilgi = r_wiki['extract']
             else:
-                # Olmazsa DuckDuckGo HTML yedek hattını devreye sok
                 search_url = f"https://duckduckgo.com/html/?q={urllib.parse.quote(sorgu)}"
                 soup = BeautifulSoup(requests.get(search_url, headers=h).text, 'html.parser')
                 snippet = soup.find('a', class_='result__snippet')
                 bilgi = snippet.get_text() if snippet else "Maalesef hiçbir kaynakta özet bilgiye ulaşılamadı kanka."
-            
             st.session_state.bilgi, st.session_state.konu = bilgi, sorgu.title()
         except: st.session_state.bilgi = "Global sisteme şu an ulaşılamıyor."
 
