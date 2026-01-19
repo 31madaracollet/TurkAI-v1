@@ -5,11 +5,13 @@ import datetime
 import sqlite3
 import hashlib
 import urllib.parse
+import re # Türkçe karakter temizliği için
+from fpdf import FPDF # PDF için bu lazım
 
 # --- ⚙️ SİSTEM AYARLARI ---
 st.set_page_config(page_title="TürkAI Analiz Merkezi", page_icon="🇹🇷", layout="wide")
 
-# --- 🎨 CANVA MODERN TEMASI (Dokunulmadı) ---
+# --- 🎨 CANVA MODERN TEMASI (Orijinal) ---
 st.markdown("""
     <style>
     .stApp { background-color: #ffffff; }
@@ -42,7 +44,6 @@ st.markdown("""
         background-color: #cc0000 !important; color: white !important;
         border-radius: 10px !important; font-weight: bold !important;
     }
-    /* Yeni Notlar İçin Stil */
     .ozel-not {
         background-color: #fff3f3; color: #cc0000; padding: 10px; 
         border-radius: 10px; border: 1px dashed #cc0000; margin-bottom: 15px;
@@ -77,10 +78,7 @@ if not st.session_state.user:
     _, col2, _ = st.columns([1, 1.2, 1])
     with col2:
         st.markdown("<div class='giris-kapsayici'><h1>🇹🇷 TürkAI</h1></div>", unsafe_allow_html=True)
-        
-        # --- NOT 1: GİRİŞ UYARISI ---
         st.markdown("<div class='ozel-not'>⚠️ Sayfayı yenileyince veya sayfayı kapatıp açtığınızda oturumunuz kapanır, şu an beta olduğu için çalışıyoruz.</div>", unsafe_allow_html=True)
-        
         t1, t2 = st.tabs(["🔐 Giriş", "📝 Kayıt"])
         with t1:
             u_in = st.text_input("Kullanıcı Adı", key="l_u")
@@ -105,11 +103,8 @@ with st.sidebar:
     if st.button("🔴 Çıkış"): st.session_state.clear(); st.rerun()
     st.divider()
     m_secim = st.radio("📡 Analiz Modu:", ["V1 (Wikipedia)", "V2 (Global - Canavar)", "V3 (Matematik)"])
-    
-    # --- NOT 2: MATEMATİK NOTU ---
     if m_secim == "V3 (Matematik)":
         st.markdown("<div class='ozel-not'>⚠️ <b>NOT:</b> Çarpı (x) yerine yıldız (<b>*</b>) kullan kanka.</div>", unsafe_allow_html=True)
-        
     st.divider()
     c.execute("SELECT konu, icerik FROM aramalar WHERE kullanici=? ORDER BY tarih DESC LIMIT 10", (st.session_state.user,))
     for k, i in c.fetchall():
@@ -119,22 +114,15 @@ with st.sidebar:
 
 # --- 💻 ÇALIŞMA ALANI ---
 st.markdown("## TürkAI Araştırma Terminali")
-
-# --- NOT 3: ANAHTAR KELİME NOTU ---
-st.markdown("""
-    <div class='kullanim-notu'>
-        💡 <b>TÜYO:</b> Araştırmak istediğiniz konunun anahtar kelimesini ya da direkt ismini yazınız.<br>
-        ❌ <i>"Türk kimdir?"</i> yerine ✅ <b>"Türk"</b> yazarsanız daha hızlı sonuç alırsınız kanka.
-    </div>
-""", unsafe_allow_html=True)
+st.markdown("<div class='kullanim-notu'>💡 <b>TÜYO:</b> Araştırmak istediğiniz konunun anahtar kelimesini yazınız. ❌ <i>Türk kimdir?</i> ✅ <b>Türk</b></div>", unsafe_allow_html=True)
 
 sorgu = st.chat_input("Neyi analiz edelim kanka?")
 
 if sorgu:
     st.session_state.son_sorgu = sorgu
-    h = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36'}
+    h = {'User-Agent': 'Mozilla/5.0'}
     
-    # --- V1: Wikipedia ---
+    # --- MOTORLAR (ORİJİNAL) ---
     if m_secim == "V1 (Wikipedia)":
         try:
             r = requests.get(f"https://tr.wikipedia.org/w/api.php?action=query&list=search&srsearch={sorgu}&format=json", headers=h).json()
@@ -143,23 +131,13 @@ if sorgu:
             info = "\n\n".join([p.get_text() for p in soup.find_all('p') if len(p.get_text()) > 50][:4])
             st.session_state.bilgi, st.session_state.konu = info, head
         except: st.session_state.bilgi = "Sonuç bulunamadı."
-
-    # --- V2: GLOBAL ---
     elif m_secim == "V2 (Global - Canavar)":
         try:
             wiki_api = f"https://tr.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(sorgu)}"
             r_wiki = requests.get(wiki_api, headers=h).json()
-            if 'extract' in r_wiki:
-                bilgi = r_wiki['extract']
-            else:
-                search_url = f"https://duckduckgo.com/html/?q={urllib.parse.quote(sorgu)}"
-                soup = BeautifulSoup(requests.get(search_url, headers=h).text, 'html.parser')
-                snippet = soup.find('a', class_='result__snippet')
-                bilgi = snippet.get_text() if snippet else "Maalesef hiçbir kaynakta özet bilgiye ulaşılamadı kanka."
+            bilgi = r_wiki.get('extract', "Maalesef özet bilgiye ulaşılamadı.")
             st.session_state.bilgi, st.session_state.konu = bilgi, sorgu.title()
-        except: st.session_state.bilgi = "Global sisteme şu an ulaşılamıyor."
-
-    # --- V3: Matematik ---
+        except: st.session_state.bilgi = "Hata oluştu."
     elif m_secim == "V3 (Matematik)":
         try:
             res = eval("".join(c for c in sorgu if c in "0123456789+-*/(). "), {"__builtins__": {}}, {})
@@ -170,10 +148,31 @@ if sorgu:
         c.execute("INSERT INTO aramalar VALUES (?,?,?,?,?)", (st.session_state.user, st.session_state.konu, st.session_state.bilgi, str(datetime.datetime.now()), m_secim))
         conn.commit(); st.rerun()
 
-# --- 📊 GÖRÜNÜM ---
+# --- 📊 GÖRÜNÜM VE PDF SİSTEMİ ---
 if st.session_state.son_sorgu:
     st.markdown(f"<div class='user-msg'><b>Siz:</b><br>{st.session_state.son_sorgu}</div>", unsafe_allow_html=True)
 
 if st.session_state.bilgi:
     st.markdown(f"### 🇹🇷 Analiz: {st.session_state.konu}")
     st.markdown(f"<div class='ai-rapor-alani'>{st.session_state.bilgi}</div>", unsafe_allow_html=True)
+    
+    # --- 📄 PDF OLUŞTURMA MOTORU ---
+    def pdf_yap():
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", 'B', 16)
+        pdf.cell(200, 10, txt="TurkAI Analiz Raporu", ln=True, align='C')
+        pdf.ln(10)
+        pdf.set_font("Arial", size=12)
+        
+        # Türkçe karakterleri PDF'in anlayacağı dile çeviren küçük filtre
+        def temizle(t):
+            d = {'İ':'I','ı':'i','Ş':'S','ş':'s','Ğ':'G','ğ':'g','Ü':'U','ü':'u','Ö':'O','ö':'o','Ç':'C','ç':'c'}
+            for k,v in d.items(): t = t.replace(k,v)
+            return t
+
+        metin = f"Konu: {temizle(st.session_state.konu)}\n\nRapor:\n{temizle(st.session_state.bilgi)}\n\nKullanici: {temizle(st.session_state.user)}"
+        pdf.multi_cell(0, 10, txt=metin.encode('latin-1', 'replace').decode('latin-1'))
+        return pdf.output(dest='S').encode('latin-1')
+
+    st.download_button("📄 Analizi PDF Olarak İndir", data=pdf_yap(), file_name=f"TurkAI_{st.session_state.konu}.pdf", mime="application/pdf")
