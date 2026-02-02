@@ -268,7 +268,7 @@ def tek_motor_analiz(sorgu, timeout=5):
     # Paralel site tarama
     site_sonuclari = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        future_to_site = {executor.submit(site_tara, site): site for site in turkce_siteler[:5]}
+        future_to_site = {executor.submit(site_tara, site): site for site in turkce_siteles[:5]}
         for future in concurrent.futures.as_completed(future_to_site):
             result = future.result()
             if result:
@@ -386,18 +386,23 @@ with st.sidebar:
         "Türkiye başkenti"
     ]
     
-    for sorgu in hizli_sorgular:
-        if st.button(sorgu[:25], key=f"q_{sorgu}", use_container_width=True):
+    for idx, sorgu in enumerate(hizli_sorgular):
+        # FİX: Her butona unique key (idx kullan)
+        if st.button(sorgu[:25], key=f"quick_{idx}_{time.time()}", use_container_width=True):
             st.session_state.son_sorgu = sorgu
             st.rerun()
     
     st.divider()
     
-    # GEÇMİŞ
+    # GEÇMİŞ - FİX: Unique key'ler ile
     st.markdown("### 📜 Son Aramalar")
     c.execute("SELECT konu, icerik FROM aramalar WHERE kullanici=? ORDER BY tarih DESC LIMIT 10", (st.session_state.user,))
-    for k, i in c.fetchall():
-        if st.button(f"📌 {k[:20]}", key=f"h_{hash(k)}", use_container_width=True):
+    history_items = c.fetchall()
+    
+    for idx, (k, i) in enumerate(history_items):
+        # FİX: Her butona unique key (timestamp + idx)
+        button_key = f"hist_{idx}_{datetime.datetime.now().timestamp()}"
+        if st.button(f"📌 {k[:20]}", key=button_key, use_container_width=True):
             st.session_state.bilgi, st.session_state.konu, st.session_state.son_sorgu = i, k, k
             st.rerun()
 
@@ -470,7 +475,7 @@ TürkAI Ultimate v3.0 | Tek Motor Sistemi
         st.download_button(
             "📄 Analizi PDF Olarak İndir", 
             data=pdf_yap(), 
-            file_name=f"TurkAI_{st.session_state.konu[:30]}.pdf", 
+            file_name=f"TurkAI_{st.session_state.konu[:30].replace(' ', '_')}.pdf", 
             mime="application/pdf",
             use_container_width=True
         )
