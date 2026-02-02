@@ -1,6 +1,6 @@
 """
 TÜRKAI - Ultimate Türkçe AI Asistan
-Sürüm: 2.0 | Madara Edition
+Sürüm: 2.1 | Madara Edition - GÜNCELLENMİŞ
 """
 
 import streamlit as st
@@ -348,6 +348,29 @@ em {
         padding: 14px 18px;
     }
 }
+
+/* ÖZEL KART SIDEBAR İÇİN */
+.sidebar-card {
+    background: rgba(30, 30, 30, 0.8);
+    border-radius: 14px;
+    padding: 18px;
+    margin: 15px 0;
+    border: 1px solid rgba(204, 0, 0, 0.25);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+/* QUICK ACTION BUTTONS */
+.quick-btn {
+    background: rgba(40, 40, 40, 0.7) !important;
+    border: 1px solid rgba(204, 0, 0, 0.3) !important;
+    color: #ff4d4d !important;
+    transition: all 0.3s !important;
+}
+
+.quick-btn:hover {
+    background: rgba(204, 0, 0, 0.2) !important;
+    border-color: #cc0000 !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -360,6 +383,8 @@ if 'last_query' not in st.session_state:
     st.session_state.last_query = ''
 if 'last_response' not in st.session_state:
     st.session_state.last_response = ''
+if 'show_examples' not in st.session_state:
+    st.session_state.show_examples = True
 
 # ==================== ANA FONKSİYONLAR ====================
 def search_wikipedia(query):
@@ -502,9 +527,10 @@ def login_page():
 
 # ==================== SIDEBAR ====================
 def render_sidebar():
-    """Sidebar"""
+    """Sidebar - ÖRNEK SORGULAR BURADA!"""
     
     with st.sidebar:
+        # Kullanıcı bilgileri
         st.markdown(f"""
         <div style='
             background: linear-gradient(135deg, rgba(204,0,0,0.2) 0%, rgba(255,77,77,0.1) 100%);
@@ -518,39 +544,78 @@ def render_sidebar():
         </div>
         """, unsafe_allow_html=True)
         
+        # Çıkış butonu
         if st.button("🔴 ÇIKIŞ YAP", use_container_width=True, type="secondary"):
             st.session_state.user = None
             st.session_state.history = []
+            st.session_state.last_query = ''
+            st.session_state.last_response = ''
             st.rerun()
         
         st.markdown("---")
+        
+        # HIZLI SORGULAR BÖLÜMÜ - HER ZAMAN GÖZÜKECEK
+        st.markdown("### ⚡ HIZLI SORGULAR")
+        
+        # Hızlı sorgu butonları
+        quick_actions = [
+            ("🧮 15 x 3 + 7", "15 x 3 + 7"),
+            ("🌤️ İstanbul Hava", "İstanbul hava durumu"),
+            ("📖 Atatürk Kimdir", "Atatürk kimdir"),
+            ("💻 Python Nedir", "Python nedir"),
+            ("📍 Türkiye Başkenti", "Türkiye başkenti")
+        ]
+        
+        for label, query in quick_actions:
+            if st.button(label, key=f"quick_{query}", use_container_width=True):
+                st.session_state.last_query = query
+                st.rerun()
+        
+        st.markdown("---")
+        
+        # ÖRNEK SORGULAR KARTI - HER ZAMAN GÖZÜKECEK
+        st.markdown("""
+        <div class='sidebar-card'>
+            <h4 style='color: #ff4d4d; margin-bottom: 15px; text-align: center;'>💡 ÖRNEK SORGULAR</h4>
+            
+            <div style='color: #ccc; line-height: 1.8;'>
+                <p>• <strong style='color: #ff4d4d;'>Matematik:</strong> "25 x 4 + 8"</p>
+                <p>• <strong style='color: #ff4d4d;'>Hava:</strong> "Ankara hava durumu"</p>
+                <p>• <strong style='color: #ff4d4d;'>Tarih:</strong> "Atatürk kimdir?"</p>
+                <p>• <strong style='color: #ff4d4d;'>Teknoloji:</strong> "Python nedir?"</p>
+                <p>• <strong style='color: #ff4d4d;'>Coğrafya:</strong> "Türkiye'nin başkenti"</p>
+                <p>• <strong style='color: #ff4d4d;'>Bilim:</strong> "Einstein kimdir?"</p>
+                <p>• <strong style='color: #ff4d4d;'>Spor:</strong> "Fenerbahçe nedir?"</p>
+            </div>
+            
+            <p style='color: #888; font-size: 0.85em; margin-top: 15px; text-align: center;'>
+                Yukarıdaki butonlara tıklayın veya kendiniz yazın!
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("---")
+        
+        # Son sorgular (geçmiş)
         st.markdown("### 📜 SON SORGULAR")
         
         if st.session_state.history:
-            for i, item in enumerate(st.session_state.history[-5:][::-1]):
-                btn_label = f"🔍 {item['query'][:20]}..." if len(item['query']) > 20 else f"🔍 {item['query']}"
-                if st.button(btn_label, key=f"hist_{i}", use_container_width=True):
+            # Son 5 sorguyu göster (en yeni en üstte)
+            recent_history = st.session_state.history[-5:][::-1]
+            
+            for i, item in enumerate(recent_history):
+                query_display = item['query']
+                if len(query_display) > 22:
+                    query_display = query_display[:20] + "..."
+                
+                emoji = "🧮" if item['category'] == 'matematik' else "🌤️" if item['category'] == 'hava' else "📖"
+                
+                if st.button(f"{emoji} {query_display}", key=f"recent_{i}", use_container_width=True):
                     st.session_state.last_query = item['query']
                     st.session_state.last_response = item['response']
                     st.rerun()
         else:
-            st.info("Henüz sorgunuz yok.")
-        
-        st.markdown("---")
-        st.markdown("### ⚡ HIZLI SORULAR")
-        
-        quick_qs = [
-            "Atatürk kimdir?",
-            "İstanbul hava durumu",
-            "Python programlama dili",
-            "15 x 3 + 7",
-            "Türkiye'nin başkenti"
-        ]
-        
-        for q in quick_qs:
-            if st.button(q, key=f"quick_{q}", use_container_width=True):
-                st.session_state.last_query = q
-                st.rerun()
+            st.info("Henüz sorgu geçmişiniz yok.")
 
 # ==================== ANA UYGULAMA ====================
 def main_app():
@@ -566,16 +631,16 @@ def main_app():
     </div>
     """, unsafe_allow_html=True)
     
-    # Sidebar
+    # Sidebar'ı render et (ÖRNEK SORGULAR BURADA)
     render_sidebar()
     
-    # Chat input
-    col1, col2, col3 = st.columns([0.5, 3, 0.5])
+    # Chat input - DAHA BÜYÜK VE MERKEZDE
+    col1, col2, col3 = st.columns([0.3, 3.4, 0.3])
     
     with col2:
         query = st.text_input(
             "",
-            placeholder="💬 TürkAI'ye sorunuzu yazın... (Matematik, Hava Durumu, Genel Bilgi)",
+            placeholder="💬 TürkAI'ye sorunuzu yazın... (Örnek: 'Python nedir?', 'İstanbul hava durumu', '15*3+7')",
             key="main_input",
             label_visibility="collapsed"
         )
@@ -585,57 +650,70 @@ def main_app():
         st.session_state.last_query = query
         
         with st.spinner("TÜRKAI düşünüyor..."):
-            # Matematik
-            if re.match(r'^[\d\s+\-*/().xX]+$', query.replace(' ', '')):
+            # 1. Matematik kontrolü
+            clean_query = query.replace(' ', '')
+            if re.match(r'^[\d+\-*/().xX]+$', clean_query):
                 response = calculate_math(query)
                 category = "matematik"
             
-            # Hava durumu
-            elif any(x in query.lower() for x in ['hava', 'durumu', 'sıcaklık', 'yağmur']):
+            # 2. Hava durumu kontrolü
+            elif any(keyword in query.lower() for keyword in ['hava', 'durumu', 'sıcaklık', 'yağmur', 'kar', 'rüzgar']):
                 city = "İstanbul"
                 words = query.lower().split()
+                excluded_words = ['hava', 'durumu', 'nasıl', 'kaç', 'derece', 'nedir']
+                
                 for w in words:
-                    if w not in ['hava', 'durumu', 'nasıl', 'kaç'] and len(w) > 2:
+                    if w not in excluded_words and len(w) > 2:
                         city = w.title()
                         break
+                
                 response = get_weather(city)
                 category = "hava"
             
-            # Genel sorgu
+            # 3. Genel sorgu
             else:
-                wiki = search_wikipedia(query)
-                web = search_web(query)
+                wiki_response = search_wikipedia(query)
                 
-                if wiki:
-                    response = wiki
+                if wiki_response:
+                    response = wiki_response
                     category = "wikipedia"
-                elif web:
-                    response = web
-                    category = "web"
                 else:
-                    response = f"""
+                    web_response = search_web(query)
+                    
+                    if web_response:
+                        response = web_response
+                        category = "web"
+                    else:
+                        response = f"""
 🤔 **"{query}"** hakkında detaylı bilgi bulunamadı.
 
-**Öneriler:**
-• Daha spesifik sorun
-• Türkçe karakter kullanın
-• Farklı kelimeler deneyin
+**Önerilerim:**
+• Sorgunuzu daha açıklayıcı yazın
+• Türkçe karakterleri kontrol edin (ç, ğ, ı, ö, ş, ü)
+• Farklı bir ifade deneyin
 
-**Örnek:** "Mustafa Kemal Atatürk'ün hayatı"
-                    """
-                    category = "genel"
+**Örnekler:**
+- "Mustafa Kemal Atatürk'ün hayatı"
+- "Python programlama dili nedir?"
+- "İstanbul'un tarihi yerleri nelerdir?"
+                        """
+                        category = "genel"
             
             # Geçmişe kaydet
             history_item = {
                 'query': query,
                 'response': response,
                 'category': category,
-                'time': datetime.datetime.now().strftime("%H:%M")
+                'time': datetime.datetime.now().strftime("%H:%M"),
+                'date': datetime.datetime.now().strftime("%d.%m.%Y")
             }
             
+            # En fazla 20 kayıt tut
             if len(st.session_state.history) >= 20:
                 st.session_state.history.pop(0)
+            
             st.session_state.history.append(history_item)
+            st.session_state.last_response = response
             
             # Sonuçları göster
             st.markdown(f"""
@@ -648,11 +726,18 @@ def main_app():
             st.markdown(f"""
             <div class='ai-response'>
                 {response}
+                
+                <div style='margin-top: 20px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1);'>
+                    <small style='color: #888;'>
+                        📅 {datetime.datetime.now().strftime("%d.%m.%Y %H:%M")} | 
+                        🏷️ {category.title()}
+                    </small>
+                </div>
             </div>
             """, unsafe_allow_html=True)
     
-    # Önceki sorgu
-    elif st.session_state.last_query:
+    # Önceki sorguyu göster (eğer varsa ama şu an sorgu yoksa)
+    elif st.session_state.last_query and st.session_state.last_response:
         st.markdown(f"""
         <div class='user-msg'>
             <b>{st.session_state.user}:</b><br>
@@ -667,33 +752,34 @@ def main_app():
         """, unsafe_allow_html=True)
     
     else:
-        # Hoş geldin mesajı
+        # YENİ KULLANICI İÇİN KARŞILAMA MESAJI
         st.markdown("""
         <div class='ai-response' style='text-align: center;'>
-            <h3 style='color: #ff4d4d;'>👋 HOŞ GELDİNİZ!</h3>
-            <p style='color: #ccc; margin: 20px 0;'>
-                TÜRKAI'ye istediğiniz her şeyi sorabilirsiniz.
+            <h3 style='color: #ff4d4d; margin-bottom: 20px;'>👋 TÜRKAI'YE HOŞ GELDİNİZ!</h3>
+            
+            <p style='color: #ccc; margin-bottom: 25px; font-size: 1.1em;'>
+                Türkçe akıllı asistanınıza her şeyi sorabilirsiniz.
             </p>
             
             <div style='
-                background: rgba(30, 30, 30, 0.7);
+                background: rgba(204, 0, 0, 0.1);
                 border-radius: 16px;
                 padding: 20px;
-                margin: 20px 0;
-                border: 1px solid rgba(204, 0, 0, 0.2);
+                margin: 25px 0;
+                border: 1px solid rgba(204, 0, 0, 0.3);
             '>
-                <h4 style='color: #ff4d4d;'>💡 ÖRNEK SORGULAR</h4>
-                <div style='text-align: left; color: #ccc;'>
-                    <p>• <strong>Matematik:</strong> "25 x 4 + 8"</p>
-                    <p>• <strong>Hava:</strong> "Ankara hava durumu"</p>
-                    <p>• <strong>Tarih:</strong> "Atatürk kimdir?"</p>
-                    <p>• <strong>Teknoloji:</strong> "Python nedir?"</p>
-                    <p>• <strong>Coğrafya:</strong> "Türkiye'nin başkenti"</p>
+                <h4 style='color: #ff4d4d;'>🚀 NASIL KULLANILIR?</h4>
+                
+                <div style='text-align: left; color: #ccc; line-height: 1.8; margin-top: 15px;'>
+                    <p>1️⃣ <strong>Soldaki "Hızlı Sorgular"</strong> butonlarına tıklayın</p>
+                    <p>2️⃣ <strong>Yukarıdaki input'a</strong> kendi sorunuzu yazın</p>
+                    <p>3️⃣ <strong>Enter'a basın</strong> veya bekleyin</p>
+                    <p>4️⃣ <strong>Sonuçlar</strong> anında gösterilecek</p>
                 </div>
             </div>
             
-            <p style='color: #999; font-size: 0.9em;'>
-                👈 Soldaki menüden hızlı sorgulara ulaşabilirsiniz.
+            <p style='color: #999; font-size: 0.95em; margin-top: 25px;'>
+                💡 <strong>İpucu:</strong> 👈 Soldaki sidebar'da her zaman örnek sorguları görebilirsiniz!
             </p>
         </div>
         """, unsafe_allow_html=True)
@@ -715,13 +801,13 @@ st.markdown("""
     font-size: 0.85em;
 '>
     <p>
-        🚀 <strong style='color: #ff4d4d;'>TÜRKAI v2.0</strong> | Madara Edition
+        🚀 <strong style='color: #ff4d4d;'>TÜRKAI v2.1</strong> | Madara Edition
     </p>
     <p style='margin-top: 5px;'>
         🔥 Ultimate Türkçe AI Asistan | 🇹🇷 %100 Türkçe
     </p>
     <p style='margin-top: 5px; color: #888; font-size: 0.8em;'>
-        Demo Giriş: admin / admin123
+        Admin Giriş: <strong>admin / admin123</strong> | Demo: Herhangi bir kullanıcı adı
     </p>
 </div>
 """, unsafe_allow_html=True)
