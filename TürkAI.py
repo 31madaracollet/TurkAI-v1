@@ -13,7 +13,7 @@ import concurrent.futures
 # --- ⚙️ SİSTEM AYARLARI ---
 st.set_page_config(page_title="TürkAI Analiz Merkezi", page_icon="🇹🇷", layout="wide")
 
-# --- 🎨 CANVA MODERN TEMASI (Orijinal Dokuyu Bozmadan) ---
+# --- 🎨 CANVA MODERN TEMASI ---
 st.markdown("""
     <style>
     .stApp { background-color: #ffffff; }
@@ -30,6 +30,7 @@ st.markdown("""
     .ai-rapor-alani {
         border-left: 6px solid #cc0000; padding: 20px 25px;
         background-color: #fdfdfd; margin-bottom: 25px; border-radius: 0px 15px 15px 0px;
+        white-space: pre-wrap;
     }
     [data-testid="stSidebar"] { background-color: #f8f9fa; border-right: 3px solid #cc0000; }
     div.stButton > button {
@@ -39,7 +40,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 💾 VERİTABANI VE HAFIZA HAZIRLIĞI ---
+# --- 💾 VERİTABANI ---
 @st.cache_resource
 def get_db():
     conn = sqlite3.connect('turkai_v220.db', check_same_thread=False)
@@ -50,136 +51,141 @@ def get_db():
 conn = get_db()
 c = conn.cursor()
 
-# Hata almamak için tüm session değişkenlerini en başta doğuruyoruz
 if "user" not in st.session_state: st.session_state.user = None
 if "bilgi" not in st.session_state: st.session_state.bilgi = None
 if "konu" not in st.session_state: st.session_state.konu = ""
 if "son_sorgu" not in st.session_state: st.session_state.son_sorgu = None
 
-# --- 🛡️ AGRESİF FİLTRE (Türkçe Dostu) ---
-def temizle_motoru(text):
+# --- 🛡️ AKILLI FİLTRE MOTORU ---
+def analiz_temizle(text):
     if not text: return ""
-    # Sadece Türkçe, Latin harfleri ve temel işaretleri bırakır; gerisini infaz eder.
+    # "Microsoft", "Login", "Sign in" gibi çöp bilgileri temizle
+    cop_kelimeler = ["Microsoft", "Sign In", "Create Your Account", "Sign up", "Login", "Cookies", "Privacy Policy"]
+    for kelime in cop_kelimeler:
+        text = re.sub(kelime, "", text, flags=re.I)
+    
+    # Arapça/Korece vs. temizliği + Türkçe koruma
     return re.sub(r'[^a-zA-Z0-9\s.,;:!?()çğıöşüÇĞİÖŞÜ\-\+*/%@=]', '', str(text))
 
-# --- 🔍 ARAŞTIRMA ÇEKİRDEKLERİ ---
+# --- 🔍 DERİN ARAŞTIRMA SİSTEMİ ---
 def wiki_sorgu(sorgu):
     try:
         url = f"https://tr.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(sorgu)}"
         r = requests.get(url, timeout=5).json()
-        return f"📖 **Wikipedia:** {r.get('extract', '')}"
+        if 'extract' in r:
+            return f"📖 **Özet Bilgi:** {r['extract']}"
+        return ""
     except: return ""
 
 def web_sorgu(sorgu):
     try:
         with DDGS() as ddgs:
-            results = list(ddgs.text(sorgu, region='tr-tr', max_results=4))
-            return "\n".join([f"🌐 **{r['title']}**: {r['body']}" for r in results])
+            # Sorguyu "nedir" veya "hakkında bilgi" diye genişletiyoruz ki Microsoft gelmesin
+            results = list(ddgs.text(f"{sorgu} nedir hakkında bilgi", region='tr-tr', max_results=3))
+            if not results: return ""
+            analiz = "🌐 **Web Araştırma Sonuçları:**\n"
+            for r in results:
+                analiz += f"\n🔹 {r['title']}\n{r['body']}\n"
+            return analiz
     except: return ""
 
-# --- 🔑 GİRİŞ / KAYIT ---
+# --- 🔑 GİRİŞ (Hatalardan Arındırılmış) ---
 if not st.session_state.user:
     _, col2, _ = st.columns([1, 1.2, 1])
     with col2:
         st.markdown("<div class='giris-kapsayici'><h1>🇹🇷 TürkAI</h1></div>", unsafe_allow_html=True)
         t1, t2 = st.tabs(["🔐 Giriş", "📝 Kayıt"])
         with t1:
-            u = st.text_input("Kullanıcı Adı", key="login_u")
-            p = st.text_input("Şifre", type="password", key="login_p")
-            if st.button("Giriş Yap", key="btn_login"):
+            u = st.text_input("Kullanıcı Adı", key="u_log")
+            p = st.text_input("Şifre", type="password", key="p_log")
+            if st.button("Giriş", key="b_log"):
                 hp = hashlib.sha256(p.encode()).hexdigest()
                 if c.execute("SELECT * FROM users WHERE username=? AND password=?", (u, hp)).fetchone():
                     st.session_state.user = u; st.rerun()
                 else: st.error("Hatalı!")
         with t2:
-            nu = st.text_input("Yeni Ad", key="reg_u")
-            np = st.text_input("Yeni Şifre", type="password", key="reg_p")
-            if st.button("Kaydol", key="btn_reg"):
+            nu, np = st.text_input("Yeni Ad", key="u_reg"), st.text_input("Yeni Şifre", type="password", key="p_reg")
+            if st.button("Kaydol", key="b_reg"):
                 try:
                     c.execute("INSERT INTO users VALUES (?,?)", (nu, hashlib.sha256(np.encode()).hexdigest()))
-                    conn.commit(); st.success("Tamamdır kanka, giriş yap!")
-                except: st.error("Bu isim alınmış.")
+                    conn.commit(); st.success("Kaydoldun!")
+                except: st.error("İsim dolu.")
     st.stop()
 
-# --- 🚀 PANEL VE SIDEBAR (Hatasız Key Sistemi) ---
+# --- 🚀 PANEL ---
 with st.sidebar:
     st.markdown(f"### 👤 {st.session_state.user}")
-    if st.button("🔴 Çıkış", key="btn_logout"): st.session_state.clear(); st.rerun()
+    if st.button("🔴 Çıkış", key="logout"): st.session_state.clear(); st.rerun()
     st.divider()
     st.markdown("### 📌 Geçmiş")
     gecmis = c.execute("SELECT konu, icerik FROM aramalar WHERE kullanici=? ORDER BY tarih DESC LIMIT 8", (st.session_state.user,)).fetchall()
-    
-    # enumerate ile her butona eşsiz key vererek DuplicateElementKey hatasını çözüyoruz
     for idx, (k, i) in enumerate(gecmis):
-        if st.button(f"📄 {k[:18]}", key=f"hist_btn_{idx}", use_container_width=True):
+        if st.button(f"📄 {k[:15]}", key=f"h_{idx}", use_container_width=True):
             st.session_state.bilgi, st.session_state.konu, st.session_state.son_sorgu = i, k, k
             st.rerun()
 
-# --- 💻 AKILLI ANALİZ DÖNGÜSÜ ---
-st.markdown("## TürkAI Araştırma Terminali")
-sorgu = st.chat_input("Emret kanka...")
+# --- 💻 AKILLI ANALİZ ---
+st.markdown("## TürkAI Analiz Terminali")
+sorgu = st.chat_input("Neyi analiz edelim?")
 
 if sorgu:
     st.session_state.son_sorgu = sorgu
     motor_tipi = "AI"
-    with st.spinner('🚀 TurkAI verileri analiz ediyor...'):
+    with st.spinner('🚀 Derin araştırmaya çıkıldı...'):
         # 1. Matematik
         if re.match(r"^[\d\+\-\*/\.\(\)\s,x]+$", sorgu.replace("x", "*")):
             try:
                 res = eval(sorgu.replace('x', '*').replace(',', '.'), {'__builtins__':{}}, {})
-                st.session_state.bilgi = f"🧮 **Sonuç:** {res}"
+                st.session_state.bilgi = f"🧮 **Matematik:** {res}"
                 st.session_state.konu = "Matematik"
-                motor_tipi = "Matematik"
-            except: st.session_state.bilgi = "Hesap hatası."
+            except: st.session_state.bilgi = "Hata."
         
         # 2. Hava Durumu
-        elif any(x in sorgu.lower() for x in ["hava", "derece"]):
+        elif any(x in sorgu.lower() for x in ["hava", "derece", "sicaklik"]):
             try:
                 sehir = sorgu.lower().replace("hava","").replace("durumu","").strip() or "Istanbul"
                 r = requests.get(f"https://wttr.in/{sehir}?format=j1", timeout=5).json()
                 curr = r['current_condition'][0]
                 st.session_state.bilgi = f"📍 {sehir.upper()}: {curr['temp_C']}°C, {curr['lang_tr'][0]['value']}"
                 st.session_state.konu = f"{sehir.title()} Hava"
-                motor_tipi = "Hava"
-            except: st.session_state.bilgi = "Hava bilgisi alınamadı."
+            except: st.session_state.bilgi = "Hava verisi yok."
             
-        # 3. Derin Web Arama (Paralel)
+        # 3. Derin Analiz
         else:
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 w1 = executor.submit(wiki_sorgu, sorgu)
                 w2 = executor.submit(web_sorgu, sorgu)
-                st.session_state.bilgi = temizle_motoru(f"{w2.result()}\n\n{w1.result()}")
+                wiki_res = w1.result()
+                web_res = w2.result()
+                
+                # Eğer Wikipedia'da varsa önce onu koy, yoksa web sonuçlarını koy
+                birlesik = f"{wiki_res}\n\n{web_res}" if wiki_res else web_res
+                st.session_state.bilgi = analiz_temizle(birlesik)
                 st.session_state.konu = sorgu.title()
-                motor_tipi = "Derin Analiz"
         
-        # AttributeError hatasını önlemek için güvenli kayıt
-        if st.session_state.konu and st.session_state.user:
+        if st.session_state.konu:
             c.execute("INSERT INTO aramalar VALUES (?,?,?,?,?)", 
-                      (st.session_state.user, st.session_state.konu, st.session_state.bilgi, str(datetime.datetime.now()), motor_tipi))
+                      (st.session_state.user, st.session_state.konu, st.session_state.bilgi, str(datetime.datetime.now()), "TurkAI"))
             conn.commit()
             st.rerun()
 
-# --- 📊 GÖRÜNÜM VE PDF ---
+# --- 📊 GÖRÜNÜM ---
 if st.session_state.son_sorgu:
     st.markdown(f"<div class='user-msg'><b>Siz:</b><br>{st.session_state.son_sorgu}</div>", unsafe_allow_html=True)
 if st.session_state.bilgi:
     st.markdown(f"### 🇹🇷 Analiz: {st.session_state.konu}")
     st.markdown(f"<div class='ai-rapor-alani'>{st.session_state.bilgi}</div>", unsafe_allow_html=True)
-
-    def pdf_indir():
+    
+    def pdf_yap():
         pdf = FPDF()
         pdf.add_page(); pdf.set_font("Arial", size=12)
-        def p_temiz(t):
-            # PDF çökmemesi için Türkçe harfleri çeviriyoruz
+        def t(x):
             d = {'İ':'I','ı':'i','Ş':'S','ş':'s','Ğ':'G','ğ':'g','Ü':'U','ü':'u','Ö':'O','ö':'o','Ç':'C','ç':'c'}
-            for k,v in d.items(): t = t.replace(k,v)
-            return re.sub(r'[^\x00-\x7F]+', '', t)
-        
-        t_metin = f"KONU: {p_temiz(st.session_state.konu)}\n\n{p_temiz(st.session_state.bilgi)}"
-        pdf.multi_cell(0, 10, txt=t_metin.encode('latin-1', 'ignore').decode('latin-1'))
+            for k,v in d.items(): x = x.replace(k,v)
+            return re.sub(r'[^\x00-\x7F]+', '', x)
+        pdf.multi_cell(0, 10, txt=t(f"KONU: {st.session_state.konu}\n\n{st.session_state.bilgi}").encode('latin-1','ignore').decode('latin-1'))
         return pdf.output(dest='S').encode('latin-1')
     
-    st.download_button("📄 PDF İndir", data=pdf_indir(), file_name=f"TurkAI_{st.session_state.konu}.pdf", key="btn_pdf")
+    st.download_button("📄 PDF Yap", data=pdf_yap(), file_name="Rapor.pdf", key="pdf_b")
 
-st.markdown("---")
-st.markdown("<p style='text-align: center; color: #cc0000;'>🚀 Developed by <a href='https://github.com/31madaracollet' style='color: #cc0000; text-decoration: none;'><b>Madara</b></a></p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: #cc0000;'>Developed by <b>Madara</b></p>", unsafe_allow_html=True)
