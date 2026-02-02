@@ -106,7 +106,7 @@ with st.sidebar:
     st.markdown("### 📌 Geçmiş")
     gecmis = c.execute("SELECT konu, icerik FROM aramalar WHERE kullanici=? ORDER BY tarih DESC LIMIT 5", (st.session_state.user,)).fetchall()
     for k, i in gecmis:
-        if st.button(f"📄 {k[:15]}", key=f"h_{hash(k)}", use_container_width=True):
+if st.button(f"📄 {k[:15]}", key=f"btn_{hash(k)}_{datetime.datetime.now().microsecond}", use_container_width=True):
             st.session_state.bilgi, st.session_state.konu, st.session_state.son_sorgu = i, k, k
 
 # --- 💻 AKILLI ANALİZ ---
@@ -166,3 +166,4 @@ if st.session_state.bilgi:
 
 st.markdown("---")
 st.markdown("<p style='text-align: center; color: #cc0000;'>🚀 Developed by <a href='https://github.com/31madaracollet' style='color: #cc0000; text-decoration: none;'><b>Madara</b></a></p>", unsafe_allow_html=True)
+
