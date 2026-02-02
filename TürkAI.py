@@ -5,13 +5,14 @@ import datetime
 import sqlite3
 import hashlib
 import urllib.parse
-import re # Türkçe karakter temizliği için
-from fpdf import FPDF # PDF için bu lazım
+import re
+from fpdf import FPDF
+from duckduckgo_search import DDGS  # Derin arama için bu lazım
 
 # --- ⚙️ SİSTEM AYARLARI ---
 st.set_page_config(page_title="TürkAI Analiz Merkezi", page_icon="🇹🇷", layout="wide")
 
-# --- 🎨 CANVA MODERN TEMASI (Orijinal) ---
+# --- 🎨 CANVA MODERN TEMASI (Dokunulmadı) ---
 st.markdown("""
     <style>
     .stApp { background-color: #ffffff; }
@@ -44,28 +45,35 @@ st.markdown("""
         background-color: #cc0000 !important; color: white !important;
         border-radius: 10px !important; font-weight: bold !important;
     }
-    .ozel-not {
-        background-color: #fff3f3; color: #cc0000; padding: 10px; 
-        border-radius: 10px; border: 1px dashed #cc0000; margin-bottom: 15px;
-        font-size: 0.85rem; text-align: center;
+    /* Giriş Animasyonu */
+    @keyframes pulse {
+        0% { box-shadow: 0 0 0 0 rgba(204, 0, 0, 0.4); }
+        70% { box-shadow: 0 0 0 10px rgba(204, 0, 0, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(204, 0, 0, 0); }
     }
-    .kullanim-notu {
-        background-color: #f0f2f6; padding: 10px; border-radius: 10px;
-        border-left: 5px solid #cc0000; font-size: 0.9rem; margin-bottom: 10px;
-    }
+    .stButton>button { animation: pulse 2s infinite; }
     </style>
 """, unsafe_allow_html=True)
 
 # --- 💾 VERİTABANI ---
+@st.cache_resource
 def db_baslat():
     conn = sqlite3.connect('turkai_v220.db', check_same_thread=False)
     c = conn.cursor()
     c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT)')
     c.execute('CREATE TABLE IF NOT EXISTS aramalar (kullanici TEXT, konu TEXT, icerik TEXT, tarih TEXT, motor TEXT)')
     conn.commit()
-    return conn, c
+    return conn
 
-conn, c = db_baslat()
+conn = db_baslat()
+c = conn.cursor()
+
+# --- 🛠️ FONKSİYONLAR ---
+def agresif_temizle(text):
+    """Sadece Latin harfleri, Rakamları ve Türkçe karakterleri tutar. Gerisini (Arapça, Korece vb.) siler."""
+    # İzin verilenler: a-z, A-Z, 0-9, boşluk, noktalama ve Türkçe karakterler
+    # Regex mantığı: İzin verilenlerin DIŞINDAKİ her şeyi sil.
+    return re.sub(r'[^a-zA-Z0-9\s.,;:!?()çğıöşüÇĞİÖŞÜ\-\+*/]', '', str(text))
 
 # --- 🔑 GİRİŞ SİSTEMİ ---
 if "user" not in st.session_state: st.session_state.user = None
@@ -78,7 +86,6 @@ if not st.session_state.user:
     _, col2, _ = st.columns([1, 1.2, 1])
     with col2:
         st.markdown("<div class='giris-kapsayici'><h1>🇹🇷 TürkAI</h1></div>", unsafe_allow_html=True)
-        st.markdown("<div class='ozel-not'>⚠️ Sayfayı yenileyince veya sayfayı kapatıp açtığınızda oturumunuz kapanır, şu an beta olduğu için çalışıyoruz.</div>", unsafe_allow_html=True)
         t1, t2 = st.tabs(["🔐 Giriş", "📝 Kayıt"])
         with t1:
             u_in = st.text_input("Kullanıcı Adı", key="l_u")
@@ -102,53 +109,95 @@ with st.sidebar:
     st.markdown(f"### 👤 {st.session_state.user}")
     if st.button("🔴 Çıkış"): st.session_state.clear(); st.rerun()
     st.divider()
-    m_secim = st.radio("📡 Analiz Modu:", ["V1 (Wikipedia)", "V2 (Global - Canavar)", "V3 (Matematik)"])
-    if m_secim == "V3 (Matematik)":
-        st.markdown("<div class='ozel-not'>⚠️ <b>NOT:</b> Çarpı (x) yerine yıldız (<b>*</b>) kullan kanka.</div>", unsafe_allow_html=True)
-    st.divider()
+    st.markdown("### 🗄️ Son Aramalar")
     c.execute("SELECT konu, icerik FROM aramalar WHERE kullanici=? ORDER BY tarih DESC LIMIT 10", (st.session_state.user,))
     for k, i in c.fetchall():
-        if st.button(f"📌 {k[:20]}", key=f"h_{k}_{datetime.datetime.now().microsecond}", use_container_width=True):
+        if st.button(f"📌 {k[:18]}...", key=f"h_{hash(k+i)}", use_container_width=True):
             st.session_state.bilgi, st.session_state.konu, st.session_state.son_sorgu = i, k, k
             st.rerun()
 
-# --- 💻 ÇALIŞMA ALANI ---
-st.markdown("## TürkAI Araştırma Terminali")
-st.markdown("<div class='kullanim-notu'>💡 <b>TÜYO:</b> Araştırmak istediğiniz konunun anahtar kelimesini yazınız. ❌ <i>Türk kimdir?</i> ✅ <b>Türk</b></div>", unsafe_allow_html=True)
+# --- 💻 AKILLI TERMİNAL ---
+st.markdown("## TürkAI Akıllı Analiz Merkezi")
+st.info("💡 **Otomatik Mod Devrede:** Matematik, Altın, Hava Durumu veya Derin Araştırma... Sen sadece yaz, motor anlar.")
 
-sorgu = st.chat_input("Neyi analiz edelim kanka?")
+sorgu = st.chat_input("Emret kanka, neye bakalım?")
 
 if sorgu:
     st.session_state.son_sorgu = sorgu
-    h = {'User-Agent': 'Mozilla/5.0'}
+    st.session_state.bilgi = "Analiz ediliyor..." # Geçici
+    motor_tipi = "Genel"
     
-    # --- MOTORLAR (ORİJİNAL) ---
-    if m_secim == "V1 (Wikipedia)":
+    # --- 🧠 YAPAY ZEKA YÖNLENDİRİCİSİ (HEPSİ BİR ARADA) ---
+    
+    # 1. HAVA DURUMU SENSÖRÜ
+    if "hava" in sorgu.lower() or "sıcaklık" in sorgu.lower() or "derece" in sorgu.lower():
         try:
-            r = requests.get(f"https://tr.wikipedia.org/w/api.php?action=query&list=search&srsearch={sorgu}&format=json", headers=h).json()
-            head = r['query']['search'][0]['title']
-            soup = BeautifulSoup(requests.get(f"https://tr.wikipedia.org/wiki/{head.replace(' ', '_')}", headers=h).text, 'html.parser')
-            info = "\n\n".join([p.get_text() for p in soup.find_all('p') if len(p.get_text()) > 50][:4])
-            st.session_state.bilgi, st.session_state.konu = info, head
-        except: st.session_state.bilgi = "Sonuç bulunamadı."
-    elif m_secim == "V2 (Global - Canavar)":
-        try:
-            wiki_api = f"https://tr.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(sorgu)}"
-            r_wiki = requests.get(wiki_api, headers=h).json()
-            bilgi = r_wiki.get('extract', "Maalesef özet bilgiye ulaşılamadı.")
-            st.session_state.bilgi, st.session_state.konu = bilgi, sorgu.title()
-        except: st.session_state.bilgi = "Hata oluştu."
-    elif m_secim == "V3 (Matematik)":
-        try:
-            res = eval("".join(c for c in sorgu if c in "0123456789+-*/(). "), {"__builtins__": {}}, {})
-            st.session_state.bilgi, st.session_state.konu = f"Sonuç: {res}", "Matematik"
-        except: st.session_state.bilgi = "Hesap hatası."
+            sehir = sorgu.lower().replace("hava", "").replace("durumu", "").replace("nasıl", "").replace("sıcaklık", "").strip()
+            if not sehir: sehir = "Istanbul"
+            r = requests.get(f"https://wttr.in/{sehir}?format=j1").json()
+            curr = r['current_condition'][0]
+            st.session_state.bilgi = f"📍 **{sehir.title()} Hava Raporu:**\n\n🌡️ Sıcaklık: {curr['temp_C']}°C\n💧 Nem: %{curr['humidity']}\n🌬️ Rüzgar: {curr['windspeedKmph']} km/h\n☁️ Durum: {curr['lang_tr'][0]['value']}"
+            st.session_state.konu = f"{sehir.title()} Hava Durumu"
+            motor_tipi = "Hava"
+        except:
+            st.session_state.bilgi = "Hava durumu servisine ulaşılamadı."
 
+    # 2. MATEMATİK SENSÖRÜ (Sadece sayı ve işlem varsa)
+    elif re.match(r"^[\d\+\-\*/\.\(\)\s,x]+$", sorgu.replace("x", "*")):
+        try:
+            # Güvenli temizlik: x yerine *, virgül yerine nokta
+            islem = sorgu.replace("x", "*").replace(",", ".")
+            res = eval(islem, {"__builtins__": {}}, {})
+            st.session_state.bilgi = f"🧮 **İşlem Sonucu:**\n\n`{sorgu}`\n# = **{res}**"
+            st.session_state.konu = "Matematik İşlemi"
+            motor_tipi = "Matematik"
+        except:
+            st.session_state.bilgi = "Hesaplama hatası. İşlemi kontrol et."
+
+    # 3. FİNANS/ALTIN SENSÖRÜ (DuckDuckGo Anlık Bilgi)
+    elif any(x in sorgu.lower() for x in ["altın", "dolar", "euro", "borsa", "fiyat"]):
+        try:
+            with DDGS() as ddgs:
+                results = list(ddgs.text(f"{sorgu} fiyatı son dakika", region='tr-tr', max_results=3))
+                ozet = "\n\n".join([f"💰 {r['title']}:\n{r['body']}" for r in results])
+                st.session_state.bilgi = f"📉 **Piyasa Özeti:**\n\n{ozet}"
+                st.session_state.konu = "Finans Verisi"
+                motor_tipi = "Finans"
+        except Exception as e:
+            st.session_state.bilgi = "Piyasa verisi çekilemedi."
+
+    # 4. DERİN ARAŞTIRMA (Wikipedia + Web)
+    else:
+        ozet_bilgi = ""
+        # Önce DuckDuckGo (Global Web)
+        try:
+            with DDGS() as ddgs:
+                web_res = list(ddgs.text(sorgu, region='tr-tr', max_results=3))
+                ozet_bilgi += "🌐 **Web Sonuçları:**\n"
+                for r in web_res:
+                    ozet_bilgi += f"- **{r['title']}**: {r['body']}\n"
+        except: pass
+        
+        # Sonra Wikipedia (Ansiklopedik)
+        try:
+            wiki_res = requests.get(f"https://tr.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(sorgu)}").json()
+            if 'extract' in wiki_res:
+                ozet_bilgi += f"\n📖 **Ansiklopedik Bilgi:**\n{wiki_res['extract']}"
+        except: pass
+        
+        if ozet_bilgi:
+            st.session_state.bilgi = ozet_bilgi
+            st.session_state.konu = sorgu.title()
+            motor_tipi = "Derin Araştırma"
+        else:
+            st.session_state.bilgi = "Kanka bu konuda internette bile bişey bulamadım."
+
+    # Kayıt
     if st.session_state.bilgi:
-        c.execute("INSERT INTO aramalar VALUES (?,?,?,?,?)", (st.session_state.user, st.session_state.konu, st.session_state.bilgi, str(datetime.datetime.now()), m_secim))
+        c.execute("INSERT INTO aramalar VALUES (?,?,?,?,?)", (st.session_state.user, st.session_state.konu, st.session_state.bilgi, str(datetime.datetime.now()), motor_tipi))
         conn.commit(); st.rerun()
 
-# --- 📊 GÖRÜNÜM VE PDF SİSTEMİ ---
+# --- 📊 GÖRÜNÜM ---
 if st.session_state.son_sorgu:
     st.markdown(f"<div class='user-msg'><b>Siz:</b><br>{st.session_state.son_sorgu}</div>", unsafe_allow_html=True)
 
@@ -156,23 +205,32 @@ if st.session_state.bilgi:
     st.markdown(f"### 🇹🇷 Analiz: {st.session_state.konu}")
     st.markdown(f"<div class='ai-rapor-alani'>{st.session_state.bilgi}</div>", unsafe_allow_html=True)
     
-    # --- 📄 PDF OLUŞTURMA MOTORU ---
+    # --- 📄 PDF SİSTEMİ (GÜÇLENDİRİLMİŞ FİLTRE) ---
     def pdf_yap():
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_font("Arial", 'B', 16)
-        pdf.cell(200, 10, txt="TurkAI Analiz Raporu", ln=True, align='C')
-        pdf.ln(10)
-        pdf.set_font("Arial", size=12)
-        
-        # Türkçe karakterleri PDF'in anlayacağı dile çeviren küçük filtre
-        def temizle(t):
-            d = {'İ':'I','ı':'i','Ş':'S','ş':'s','Ğ':'G','ğ':'g','Ü':'U','ü':'u','Ö':'O','ö':'o','Ç':'C','ç':'c'}
-            for k,v in d.items(): t = t.replace(k,v)
-            return t
+        try:
+            pdf = FPDF()
+            pdf.add_page()
+            pdf.set_font("Arial", 'B', 16)
+            pdf.cell(200, 10, txt="TurkAI Ozel Rapor", ln=True, align='C')
+            pdf.ln(10)
+            pdf.set_font("Arial", size=12)
+            
+            # UTF-8 Bozukluğunu Önleyen Mapping
+            def tr_cevir(t):
+                # Önce Türkçe karakterleri düzelt
+                d = {'İ':'I','ı':'i','Ş':'S','ş':'s','Ğ':'G','ğ':'g','Ü':'U','ü':'u','Ö':'O','ö':'o','Ç':'C','ç':'c'}
+                for k,v in d.items(): t = t.replace(k,v)
+                # Sonra agresif temizlik (Sadece Latin + Rakam + Noktalama)
+                return re.sub(r'[^\x00-\x7F]+', '', t) 
 
-        metin = f"Konu: {temizle(st.session_state.konu)}\n\nRapor:\n{temizle(st.session_state.bilgi)}\n\nKullanici: {temizle(st.session_state.user)}"
-        pdf.multi_cell(0, 10, txt=metin.encode('latin-1', 'replace').decode('latin-1'))
-        return pdf.output(dest='S').encode('latin-1')
+            temiz_konu = tr_cevir(st.session_state.konu)
+            temiz_icerik = tr_cevir(st.session_state.bilgi)
+            temiz_user = tr_cevir(st.session_state.user)
 
-    st.download_button("📄 Analizi PDF Olarak İndir", data=pdf_yap(), file_name=f"TurkAI_{st.session_state.konu}.pdf", mime="application/pdf")
+            metin = f"Konu: {temiz_konu}\n\nTarih: {str(datetime.datetime.now())[:16]}\n\nRapor:\n{temiz_icerik}\n\nKullanici: {temiz_user}"
+            pdf.multi_cell(0, 10, txt=metin.encode('latin-1', 'ignore').decode('latin-1'))
+            return pdf.output(dest='S').encode('latin-1')
+        except Exception as e:
+            return f"PDF Hatasi: {str(e)}".encode('utf-8')
+
+    st.download_button("📄 PDF İndir (Temizlenmiş)", data=pdf_yap(), file_name="TurkAI_Rapor.pdf", mime="application/pdf")
