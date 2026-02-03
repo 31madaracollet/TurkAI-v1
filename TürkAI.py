@@ -352,22 +352,4 @@ if st.session_state.bilgi:
 
 
 
-    st.download_button("📄 Analizi PDF Olarak İndir", data=pdf_yap(), file_name=f"TurkAI_{st.session_state.konu}.pdf", mime="application/pdf")          İşte bu yan kod bide requirements.txt de bunlar ve ayrıca bide senin vitrin dediğin şeyin kodu <!DOCTYPE html>
-
-<html>
-
-<head>
-
-    <meta http-equiv="refresh" content="0; url=https://turkai-v1-uhcnvmrgcdjmxx2aeczqqc.streamlit.app">
-
-    <title>TurkAI Yönlendirme</title>
-
-</head>
-
-<body>
-
-    Yönlendiriliyorsunuz...
-
-</body>
-
-</html>
+    st.download_button("📄 Analizi PDF Olarak İndir", data=pdf_yap(), file_name=f"TurkAI_{st.session_state.konu}.pdf", mime="application/pdf")    
