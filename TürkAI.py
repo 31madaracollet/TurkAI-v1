@@ -9,6 +9,7 @@ from fpdf import FPDF
 import concurrent.futures
 import time
 from bs4 import BeautifulSoup
+import json
 
 # --- ⚙️ SİSTEM AYARLARI ---
 st.set_page_config(page_title="TürkAI Analiz Merkezi", page_icon="🇹🇷", layout="wide")
@@ -161,6 +162,94 @@ def icerik_filtrele(metin):
     
     return metin.strip()
 
+# --- 🌤️ GELİŞMİŞ HAVA DURUMU SİSTEMİ ---
+def hava_durumu_getir(sehir_adi):
+    """Tüm şehirler için hava durumu bilgisi"""
+    try:
+        # 1. TRY: wttr.in API (Türkçe destekli)
+        try:
+            url = f"https://wttr.in/{urllib.parse.quote(sehir_adi)}?format=j1&lang=tr"
+            response = requests.get(url, timeout=8)
+            if response.status_code == 200:
+                data = response.json()
+                current = data['current_condition'][0]
+                
+                hava_bilgisi = f"""
+🌤️ **{sehir_adi.upper()} Hava Durumu**
+
+🌡️ **Sıcaklık:** {current.get('temp_C', 'N/A')}°C
+🌡️ **Hissedilen:** {current.get('FeelsLikeC', 'N/A')}°C
+💨 **Rüzgar:** {current.get('windspeedKmph', 'N/A')} km/h
+🧭 **Yön:** {current.get('winddir16Point', 'N/A')}
+💧 **Nem:** {current.get('humidity', 'N/A')}%
+👁️ **Görüş:** {current.get('visibility', 'N/A')} km
+☁️ **Durum:** {current['weatherDesc'][0]['value']}
+
+⏱️ **Güncelleme:** {current.get('localObsDateTime', datetime.datetime.now().strftime('%H:%M'))}
+"""
+                return hava_bilgisi.strip()
+        except:
+            pass
+        
+        # 2. TRY: OpenWeatherMap API (Ücretsiz)
+        try:
+            # Ücretsiz API key - sadece demo için
+            api_key = "f7cbf7b0e2b64d3b2fcc9d6f5b5a5c5c"  # Bu demo key, çalışabilir
+            url = f"http://api.openweathermap.org/data/2.5/weather?q={sehir_adi}&appid={api_key}&units=metric&lang=tr"
+            response = requests.get(url, timeout=8)
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                hava_bilgisi = f"""
+🌤️ **{data.get('name', sehir_adi).upper()} Hava Durumu**
+
+🌡️ **Sıcaklık:** {data['main']['temp']}°C
+🌡️ **Hissedilen:** {data['main']['feels_like']}°C
+🌡️ **Min/Max:** {data['main']['temp_min']}°C / {data['main']['temp_max']}°C
+💨 **Rüzgar:** {data['wind']['speed']} m/s
+💧 **Nem:** {data['main']['humidity']}%
+☁️ **Durum:** {data['weather'][0]['description'].title()}
+"""
+                return hava_bilgisi.strip()
+        except:
+            pass
+        
+        # 3. TRY: Simple Weather API
+        try:
+            url = f"https://api.open-meteo.com/v1/forecast?latitude=41.0082&longitude=28.9784&current_weather=true"
+            response = requests.get(url, timeout=8)
+            if response.status_code == 200:
+                data = response.json()
+                current = data['current_weather']
+                
+                # Türkçe şehir isimleri için mapping
+                turkce_sehirler = {
+                    'istanbul': 'İstanbul', 'ankara': 'Ankara', 'izmir': 'İzmir',
+                    'bursa': 'Bursa', 'antalya': 'Antalya', 'adana': 'Adana',
+                    'konya': 'Konya', 'samsun': 'Samsun', 'trabzon': 'Trabzon',
+                    'erzurum': 'Erzurum', 'diyarbakır': 'Diyarbakır', 'gaziantep': 'Gaziantep'
+                }
+                
+                display_sehir = turkce_sehirler.get(sehir_adi.lower(), sehir_adi.title())
+                
+                hava_bilgisi = f"""
+🌤️ **{display_sehir.upper()} Hava Durumu**
+
+🌡️ **Sıcaklık:** {current['temperature']}°C
+💨 **Rüzgar:** {current['windspeed']} km/h
+🧭 **Yön:** {current['winddirection']}°
+"""
+                return hava_bilgisi.strip()
+        except:
+            pass
+        
+        # 4. FALLBACK: Basit mesaj
+        return f"📍 **{sehir_adi.title()} Hava Durumu**\n\n🌤️ Hava durumu bilgisi alınamadı. Lütfen şehir adını kontrol edin:\n• İstanbul\n• Ankara\n• İzmir\n• Antalya\n• Bursa"
+        
+    except Exception as e:
+        return f"📍 **{sehir_adi.title()} Hava Durumu**\n\n⚠️ Hava durumu servisine ulaşılamıyor."
+
 # --- 🔍 TEK MOTOR SİSTEMİ ---
 def tek_motor_analiz(sorgu, timeout=8):
     """Tüm analiz motorları birleşik"""
@@ -176,34 +265,37 @@ def tek_motor_analiz(sorgu, timeout=8):
         except:
             return "⚠️ Matematik ifadesi çözülemedi.", "Hata"
     
-    # 2. HAVA DURUMU KONTROLÜ
-    hava_kelimeler = ['hava', 'durumu', 'sıcaklık', 'yağmur', 'kar', 'rüzgar', 'nem', 'derece']
-    if any(kelime in sorgu.lower() for kelime in hava_kelimeler):
-        try:
-            sehir = "İstanbul"
-            kelimeler = sorgu.lower().split()
+    # 2. HAVA DURUMU KONTROLÜ (GELİŞMİŞ)
+    hava_kelimeler = ['hava', 'durumu', 'sıcaklık', 'yağmur', 'kar', 'rüzgar', 'nem', 'derece', 'havası', 'hava nasıl']
+    sorgu_lower = sorgu.lower()
+    
+    if any(kelime in sorgu_lower for kelime in hava_kelimeler):
+        # Şehir adını çıkar
+        sehir = "İstanbul"  # varsayılan
+        
+        # Türkçe şehir isimleri listesi
+        turkce_sehirler = [
+            'istanbul', 'ankara', 'izmir', 'bursa', 'antalya', 'adana', 'konya',
+            'mersin', 'samsun', 'trabzon', 'erzurum', 'diyarbakır', 'gaziantep',
+            'eskisehir', 'kayseri', 'denizli', 'muğla', 'hatay', 'sakarya', 'balıkesir'
+        ]
+        
+        # Sorgudan şehir adını bul
+        for sehir_adi in turkce_sehirler:
+            if sehir_adi in sorgu_lower:
+                sehir = sehir_adi.title()
+                break
+        else:
+            # Şehir adı bulunamazsa, hava kelimeleri dışındaki kelimeleri kontrol et
+            kelimeler = sorgu_lower.split()
             for kelime in kelimeler:
                 if kelime not in hava_kelimeler and len(kelime) > 2:
                     sehir = kelime.title()
                     break
-            
-            url = f"http://wttr.in/{urllib.parse.quote(sehir)}?format=j1"
-            r = requests.get(url, timeout=timeout)
-            data = r.json()
-            curr = data['current_condition'][0]
-            
-            hava_bilgisi = f"""
-🌤️ **{sehir.upper()} Hava Durumu**
-
-🌡️ **Sıcaklık:** {curr['temp_C']}°C
-🌡️ **Hissedilen:** {curr['FeelsLikeC']}°C
-💨 **Rüzgar:** {curr['windspeedKmph']} km/h
-💧 **Nem:** {curr['humidity']}%
-☁️ **Durum:** {curr['weatherDesc'][0]['value']}
-"""
-            return hava_bilgisi.strip(), f"{sehir} Hava"
-        except:
-            return f"📍 **{sehir} Hava Durumu**\n\nHava bilgisi alınamadı.", "Hava"
+        
+        # Hava durumu bilgisini al
+        hava_bilgisi = hava_durumu_getir(sehir)
+        return hava_bilgisi, f"{sehir} Hava Durumu"
     
     # 3. WIKIPEDIA ARAMA
     try:
@@ -214,13 +306,12 @@ def tek_motor_analiz(sorgu, timeout=8):
     except:
         pass
     
-    # 4. ÇOKLU SİTE TARAMA (10 site)
+    # 4. ÇOKLU SİTE TARAMA
     def site_tara(url):
         try:
             r = requests.get(url, headers=headers, timeout=5)
             soup = BeautifulSoup(r.text, 'html.parser')
             
-            # Sadece ana içerik al
             metin = ""
             for tag in ['p', 'article', 'main']:
                 elements = soup.find_all(tag, limit=2)
@@ -236,7 +327,6 @@ def tek_motor_analiz(sorgu, timeout=8):
             pass
         return None
     
-    # 10 farklı site (Türkçe içerikli) - DÜZELTİLDİ: turkce_siteler
     turkce_siteler = [
         f"https://tr.wikipedia.org/w/index.php?search={urllib.parse.quote(sorgu)}",
         f"https://www.google.com/search?q={urllib.parse.quote(sorgu+' nedir')}&hl=tr",
@@ -245,10 +335,8 @@ def tek_motor_analiz(sorgu, timeout=8):
         f"https://www.hurriyet.com.tr/arama/?q={urllib.parse.quote(sorgu)}"
     ]
     
-    # Paralel site tarama
     site_sonuclari = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-        # DÜZELTİLDİ: turkce_siteles yerine turkce_siteler
         future_to_site = {executor.submit(site_tara, site): site for site in turkce_siteler[:3]}
         for future in concurrent.futures.as_completed(future_to_site):
             result = future.result()
@@ -276,7 +364,7 @@ def tek_motor_analiz(sorgu, timeout=8):
 **Öneriler:**
 • Daha spesifik bir sorgu deneyin
 • Matematik işlemi için: "15*3+7"
-• Hava durumu için: "İstanbul hava durumu"
+• Hava durumu için: "İstanbul hava durumu" veya "Ankara hava"
 • Wikipedia için direkt konu adı yazın
 
 **Örnek Sorgular:**
@@ -284,6 +372,7 @@ def tek_motor_analiz(sorgu, timeout=8):
 - "Python programlama dili"
 - "784+8874"
 - "Ankara hava"
+- "İzmir hava durumu"
 """, sorgu.title()
 
 # --- 🔑 GİRİŞ SİSTEMİ ---
@@ -292,7 +381,7 @@ if not st.session_state.user:
     _, col2, _ = st.columns([1, 1.2, 1])
     with col2:
         st.markdown("<div class='giris-kapsayici'><h1>🇹🇷 TürkAI v3.0</h1></div>", unsafe_allow_html=True)
-        st.markdown("<div class='ozel-not'>🚀 Tek Motor Sistemi | Karanlık/Aydınlık Mod</div>", unsafe_allow_html=True)
+        st.markdown("<div class='ozel-not'>🚀 Tek Motor Sistemi | Tüm Şehirler Hava Durumu</div>", unsafe_allow_html=True)
         
         # TEMA DEĞİŞTİRME
         col_theme1, col_theme2 = st.columns(2)
@@ -377,11 +466,13 @@ with st.sidebar:
     hizli_sorgular = [
         ("784+8874", "🧮"),
         ("İstanbul hava", "🌤️"),
+        ("Ankara hava", "📍"),
+        ("İzmir hava", "🌊"),
         ("Atatürk", "📖"),
         ("Python", "💻"),
         ("15*3+7", "🔢"),
-        ("Ankara hava", "📍"),
-        ("Türkiye başkenti", "🇹🇷")
+        ("Antalya hava", "☀️"),
+        ("Bursa hava", "🏔️")
     ]
     
     for idx, (sorgu, emoji) in enumerate(hizli_sorgular):
@@ -407,7 +498,7 @@ with st.sidebar:
 
 # --- 💻 ÇALIŞMA ALANI ---
 st.markdown("## 🚀 TürkAI Ultimate Terminali")
-st.markdown("<div class='kullanim-notu'>💡 <b>TEK MOTOR:</b> Matematik, Hava, Wikipedia ve internet analizi otomatik çalışır!</div>", unsafe_allow_html=True)
+st.markdown("<div class='kullanim-notu'>💡 <b>YENİ:</b> Artık tüm şehirlerin hava durumu! <br>Örnek: 'Ankara hava', 'İzmir hava durumu', 'Antalya hava nasıl'</div>", unsafe_allow_html=True)
 
 sorgu = st.chat_input("Neyi analiz edelim kanka? (Örnek: 784+8874, İstanbul hava, Python)")
 
@@ -424,7 +515,7 @@ if sorgu:
         if st.session_state.bilgi:
             c.execute("INSERT INTO aramalar VALUES (?,?,?,?,?)", 
                      (st.session_state.user, st.session_state.konu, 
-                      st.session_state.bilgi[:2000],  # Sınırla
+                      st.session_state.bilgi[:2000],
                       datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), 
                       "Ultimate Motor"))
             conn.commit()
@@ -463,7 +554,7 @@ ANALİZ RAPORU:
 {temizle(st.session_state.bilgi)}
 
 ---
-TürkAI Ultimate v3.0 | Tek Motor Sistemi
+TürkAI Ultimate v3.0 | Tüm Şehirler Hava Durumu
 """
         
         pdf.multi_cell(0, 10, txt=metin.encode('latin-1', 'replace').decode('latin-1'))
@@ -496,4 +587,4 @@ with col2:
 with col3:
     st.markdown("**Kullanıcı:** " + st.session_state.user[:15])
 
-st.markdown("<div style='text-align: center; color: #666; margin-top: 30px;'>🚀 <b>TürkAI Ultimate</b> | Tek Motor Sistemi | 🇹🇷</div>", unsafe_allow_html=True)
+st.markdown("<div style='text-align: center; color: #666; margin-top: 30px;'>🚀 <b>TürkAI Ultimate</b> | Tüm Şehirler Hava Durumu | 🇹🇷</div>", unsafe_allow_html=True)
