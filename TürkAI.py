@@ -8,6 +8,7 @@ import re
 from fpdf import FPDF
 import concurrent.futures
 import time
+from bs4 import BeautifulSoup
 
 # --- ⚙️ SİSTEM AYARLARI ---
 st.set_page_config(page_title="TürkAI Analiz Merkezi", page_icon="🇹🇷", layout="wide")
@@ -19,11 +20,11 @@ if 'dark_mode' not in st.session_state:
 if 'user' not in st.session_state: 
     st.session_state.user = None
 if 'bilgi' not in st.session_state: 
-    st.session_state.bilgi = None
+    st.session_state.bilgi = ""
 if 'konu' not in st.session_state: 
     st.session_state.konu = ""
 if 'son_sorgu' not in st.session_state: 
-    st.session_state.son_sorgu = None
+    st.session_state.son_sorgu = ""
 
 def load_theme():
     if st.session_state.dark_mode:
@@ -213,19 +214,58 @@ def tek_motor_analiz(sorgu, timeout=8):
     except:
         pass
     
-    # 4. GOOGLE ARAMA (Basit)
-    try:
-        google_url = f"https://www.google.com/search?q={urllib.parse.quote(sorgu + ' nedir Türkçe')}&hl=tr"
-        r_google = requests.get(google_url, headers=headers, timeout=timeout)
+    # 4. ÇOKLU SİTE TARAMA (10 site)
+    def site_tara(url):
+        try:
+            r = requests.get(url, headers=headers, timeout=5)
+            soup = BeautifulSoup(r.text, 'html.parser')
+            
+            # Sadece ana içerik al
+            metin = ""
+            for tag in ['p', 'article', 'main']:
+                elements = soup.find_all(tag, limit=2)
+                for el in elements:
+                    text = el.get_text().strip()
+                    if len(text) > 50:
+                        metin += text + " "
+            
+            filtreli = icerik_filtrele(metin[:300])
+            if filtreli and len(filtreli) > 30:
+                return filtreli
+        except:
+            pass
+        return None
+    
+    # 10 farklı site (Türkçe içerikli) - DÜZELTİLDİ: turkce_siteler
+    turkce_siteler = [
+        f"https://tr.wikipedia.org/w/index.php?search={urllib.parse.quote(sorgu)}",
+        f"https://www.google.com/search?q={urllib.parse.quote(sorgu+' nedir')}&hl=tr",
+        f"https://www.bing.com/search?q={urllib.parse.quote(sorgu+' Türkçe')}",
+        f"https://www.sozcu.com.tr/search/?q={urllib.parse.quote(sorgu)}",
+        f"https://www.hurriyet.com.tr/arama/?q={urllib.parse.quote(sorgu)}"
+    ]
+    
+    # Paralel site tarama
+    site_sonuclari = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        # DÜZELTİLDİ: turkce_siteles yerine turkce_siteler
+        future_to_site = {executor.submit(site_tara, site): site for site in turkce_siteler[:3]}
+        for future in concurrent.futures.as_completed(future_to_site):
+            result = future.result()
+            if result:
+                site_sonuclari.append(result)
+    
+    if site_sonuclari:
+        unique_results = []
+        seen = set()
+        for res in site_sonuclari:
+            if res not in seen and len(res) > 30:
+                seen.add(res)
+                unique_results.append(res)
         
-        if r_google.status_code == 200:
-            # Basit bir çözümleyici
-            if "Wikipedia" in r_google.text:
-                return "🔍 **Google Arama:**\n\nKonu hakkında Wikipedia'da bilgi bulundu. Detaylı analiz için Wikipedia motorunu kullanın.", sorgu.title()
-            else:
-                return "🔍 **Google Arama:**\n\nİnternette konu hakkında kaynaklar bulundu ancak detaylı analiz için daha spesifik sorgu girin.", sorgu.title()
-    except:
-        pass
+        if unique_results:
+            combined = "\n\n---\n\n".join(unique_results[:2])
+            return f"🌐 **Çoklu Kaynak Analizi:**\n\n{combined}", sorgu.title()
     
     # 5. SON ÇARE
     return f"""
