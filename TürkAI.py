@@ -1,212 +1,355 @@
 import streamlit as st
+
 import requests
+
 from bs4 import BeautifulSoup
+
 import datetime
+
 import sqlite3
+
 import hashlib
-import re
-from fpdf import FPDF
-from duckduckgo_search import DDGS
-import concurrent.futures
-import time
+
+import urllib.parse
+
+import re # Türkçe karakter temizliği için
+
+from fpdf import FPDF # PDF için bu lazım
+
+
 
 # --- ⚙️ SİSTEM AYARLARI ---
-st.set_page_config(page_title="TürkAI v5.0", page_icon="🇹🇷", layout="wide")
 
-# --- 💾 SESION YÖNETİMİ ---
+st.set_page_config(page_title="TürkAI Analiz Merkezi", page_icon="🇹🇷", layout="wide")
+
+
+
+# --- 🎨 CANVA MODERN TEMASI (Orijinal) ---
+
+st.markdown("""
+
+    <style>
+
+    .stApp { background-color: #ffffff; }
+
+    h1, h2, h3 { color: #cc0000 !important; font-weight: 800 !important; }
+
+    
+
+    .giris-kapsayici {
+
+        background-color: #fffafa;
+
+        border: 2px solid #cc0000; border-radius: 20px;
+
+        padding: 30px; text-align: center;
+
+        box-shadow: 0px 4px 15px rgba(204, 0, 0, 0.1);
+
+    }
+
+
+
+    .user-msg {
+
+        background: linear-gradient(135deg, #cc0000 0%, #ff4d4d 100%);
+
+        color: #ffffff !important;
+
+        padding: 12px 18px; border-radius: 15px 15px 0px 15px;
+
+        margin-bottom: 20px; width: fit-content; max-width: 70%;
+
+        margin-left: auto; box-shadow: 0px 4px 10px rgba(204, 0, 0, 0.2);
+
+    }
+
+    .user-msg * { color: #ffffff !important; }
+
+
+
+    .ai-rapor-alani {
+
+        border-left: 6px solid #cc0000; padding: 20px 25px;
+
+        background-color: #fdfdfd; margin-bottom: 25px;
+
+        border-radius: 0px 15px 15px 0px; box-shadow: 2px 2px 8px rgba(0,0,0,0.02);
+
+    }
+
+
+
+    [data-testid="stSidebar"] { background-color: #f8f9fa; border-right: 3px solid #cc0000; }
+
+    div.stButton > button {
+
+        background-color: #cc0000 !important; color: white !important;
+
+        border-radius: 10px !important; font-weight: bold !important;
+
+    }
+
+    .ozel-not {
+
+        background-color: #fff3f3; color: #cc0000; padding: 10px; 
+
+        border-radius: 10px; border: 1px dashed #cc0000; margin-bottom: 15px;
+
+        font-size: 0.85rem; text-align: center;
+
+    }
+
+    .kullanim-notu {
+
+        background-color: #f0f2f6; padding: 10px; border-radius: 10px;
+
+        border-left: 5px solid #cc0000; font-size: 0.9rem; margin-bottom: 10px;
+
+    }
+
+    </style>
+
+""", unsafe_allow_html=True)
+
+
+
+# --- 💾 VERİTABANI ---
+
+def db_baslat():
+
+    conn = sqlite3.connect('turkai_v220.db', check_same_thread=False)
+
+    c = conn.cursor()
+
+    c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT)')
+
+    c.execute('CREATE TABLE IF NOT EXISTS aramalar (kullanici TEXT, konu TEXT, icerik TEXT, tarih TEXT, motor TEXT)')
+
+    conn.commit()
+
+    return conn, c
+
+
+
+conn, c = db_baslat()
+
+
+
+# --- 🔑 GİRİŞ SİSTEMİ ---
+
 if "user" not in st.session_state: st.session_state.user = None
+
 if "bilgi" not in st.session_state: st.session_state.bilgi = None
+
 if "konu" not in st.session_state: st.session_state.konu = ""
-if "tema" not in st.session_state: st.session_state.tema = "system" # Varsayılan sistem
 
-# --- 🎨 CSS: GİRİŞ VE TEMA TAMİRİ ---
-def css_yukle():
-    # Tema Belirleme
-    accent = "#cc0000"
-    if st.session_state.tema == "dark":
-        bg, txt, input_bg = "#0e1117", "#ffffff", "#262730"
-    elif st.session_state.tema == "light":
-        bg, txt, input_bg = "#ffffff", "#000000", "#f0f2f6"
-    else: # System default
-        bg, txt, input_bg = "transparent", "inherit", "transparent"
+if "son_sorgu" not in st.session_state: st.session_state.son_sorgu = None
 
-    st.markdown(f"""
-        <style>
-        .stApp {{ background-color: {bg}; color: {txt}; }}
-        h1, h2, h3 {{ color: {accent} !important; }}
-        
-        /* Giriş Formu ve Inputlar */
-        .stTextInput input, .stTextArea textarea {{
-            color: {txt} !important;
-            background-color: {input_bg} !important;
-            border: 1px solid {accent} !important;
-        }}
-        
-        /* Sidebar Görünürlüğü */
-        [data-testid="stSidebar"] {{
-            border-right: 2px solid {accent};
-        }}
-        
-        /* Analiz Kutusu */
-        .rapor-kutusu {{
-            border-left: 6px solid {accent};
-            padding: 20px;
-            background-color: rgba(204, 0, 0, 0.05);
-            border-radius: 10px;
-            margin-top: 15px;
-        }}
-        
-        div.stButton > button {{
-            background-color: {accent} !important;
-            color: white !important;
-            border-radius: 10px;
-            width: 100%;
-        }}
-        </style>
-    """, unsafe_allow_html=True)
 
-css_yukle()
 
-# --- 🛡️ TÜRKÇE KARAKTER VE REKLAM FİLTRESİ ---
-def metin_temizle(t):
-    if not t: return ""
-    # Reklam ve Yabancı metin temizliği
-    yasakli = ["subscribe", "youtube", "privacy policy", "cookie", "apartment", "rent", "all rights reserved"]
-    for y in yasakli:
-        if y in t.lower(): return ""
-    return t.strip()
-
-def pdf_tr_fix(text):
-    # FPDF standart fontları için Türkçe karakter çevirici
-    tr_map = {'İ':'I','ı':'i','Ş':'S','ş':'s','Ğ':'G','ğ':'g','Ü':'U','ü':'u','Ö':'O','ö':'o','Ç':'C','ç':'c'}
-    for k, v in tr_map.items():
-        text = text.replace(k, v)
-    return re.sub(r'[^\x00-\x7F]+', ' ', text)
-
-# --- 🔍 ARAMA MOTORLARI ---
-
-def site_oku(url, timeout=7):
-    try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-        r = requests.get(url, headers=headers, timeout=timeout)
-        if r.status_code == 200:
-            soup = BeautifulSoup(r.text, 'html.parser')
-            ps = [p.get_text().strip() for p in soup.find_all('p') if len(p.get_text()) > 80]
-            return " ".join(ps[:2])
-    except: return ""
-    return ""
-
-def hizli_motor(sorgu):
-    # Wiki ve Ansiklopedi odaklı
-    kaynaklar = [
-        f"https://tr.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(sorgu)}",
-        f"https://www.bilgiustam.com/?s={urllib.parse.quote(sorgu)}"
-    ]
-    
-    # 1. Wikipedia Kontrol
-    try:
-        res = requests.get(kaynaklar[0], timeout=7).json()
-        if 'extract' in res: return f"📚 **Wikipedia:** {res['extract']}"
-    except: pass
-    
-    # 2. Genel Arama (Hızlı)
-    with DDGS() as ddgs:
-        results = list(ddgs.text(f"{sorgu} nedir bilgi", region='tr-tr', max_results=2))
-        for r in results:
-            return f"🔎 **Bilgi Kaynağı:** {r['body']}"
-    return "Hızlı motor sonuç bulamadı."
-
-def derin_motor(sorgu):
-    havuz = []
-    with DDGS() as ddgs:
-        # Tam 15 siteyi hedefliyoruz
-        linkler = [r['href'] for r in ddgs.text(f"{sorgu} hakkında detaylı bilgi", region='tr-tr', max_results=15)]
-    
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        # Her site için tam 7 saniye süre
-        sonuclar = list(executor.map(lambda u: site_oku(u, timeout=7), linkler))
-    
-    for s in sonuclar:
-        temiz = metin_temizle(s)
-        if temiz: havuz.append(f"🔹 {temiz}")
-    
-    return "\n\n".join(havuz[:10]) if havuz else "Derin analiz sonuç bulamadı."
-
-# --- 🔑 GİRİŞ VE PANEL ---
 if not st.session_state.user:
-    _, col2, _ = st.columns([1, 2, 1])
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    _, col2, _ = st.columns([1, 1.2, 1])
+
     with col2:
-        st.markdown("<h1 style='text-align:center;'>🇹🇷 TürkAI v5.0</h1>", unsafe_allow_html=True)
-        st.info("Sistem teması algılandı. Değiştirmek isterseniz yan paneli kullanın.")
-        if st.button("🚀 Misafir Olarak Başla"):
-            st.session_state.user = "Misafir"; st.rerun()
-        
-        tab1, tab2 = st.tabs(["Giriş", "Kayıt"])
-        with tab1:
-            u = st.text_input("Kullanıcı Adı")
-            p = st.text_input("Şifre", type="password")
-            if st.button("Sisteme Gir"):
-                st.session_state.user = u; st.rerun()
+
+        st.markdown("<div class='giris-kapsayici'><h1>🇹🇷 TürkAI</h1></div>", unsafe_allow_html=True)
+
+        st.markdown("<div class='ozel-not'>⚠️ Sayfayı yenileyince veya sayfayı kapatıp açtığınızda oturumunuz kapanır, şu an beta olduğu için çalışıyoruz.</div>", unsafe_allow_html=True)
+
+        t1, t2 = st.tabs(["🔐 Giriş", "📝 Kayıt"])
+
+        with t1:
+
+            u_in = st.text_input("Kullanıcı Adı", key="l_u")
+
+            p_in = st.text_input("Şifre", type="password", key="l_p")
+
+            if st.button("Giriş Yap"):
+
+                h_p = hashlib.sha256(p_in.encode()).hexdigest()
+
+                c.execute("SELECT * FROM users WHERE username=? AND password=?", (u_in, h_p))
+
+                if c.fetchone(): st.session_state.user = u_in; st.rerun()
+
+                else: st.error("Hatalı bilgi.")
+
+        with t2:
+
+            nu, np = st.text_input("Yeni Kullanıcı"), st.text_input("Yeni Şifre", type="password")
+
+            if st.button("Kaydol"):
+
+                try:
+
+                    c.execute("INSERT INTO users VALUES (?,?)", (nu, hashlib.sha256(np.encode()).hexdigest()))
+
+                    conn.commit(); st.success("Kaydoldun, giriş yap!")
+
+                except: st.error("Bu isim dolu.")
+
     st.stop()
 
+
+
+# --- 🚀 ANA PANEL ---
+
 with st.sidebar:
-    st.title(f"👤 {st.session_state.user}")
-    st.divider()
-    
-    # TEMA SEÇİCİ
-    st.subheader("🎨 Görünüm")
-    tema_sec = st.radio("Tema Ayarı:", ["Sistem", "Karanlık", "Aydınlık"])
-    if tema_sec == "Karanlık": st.session_state.tema = "dark"
-    elif tema_sec == "Aydınlık": st.session_state.tema = "light"
-    else: st.session_state.tema = "system"
-    
-    st.divider()
-    
-    # HAVA DURUMU
-    st.subheader("🌦️ Hava Durumu")
-    sehir = st.text_input("Şehir:", "Istanbul")
-    try:
-        w = requests.get(f"https://wttr.in/{sehir}?format=%C+%t", timeout=5).text
-        st.warning(f"📍 {sehir}: {w}")
-    except: st.error("Hava durumu alınamadı.")
-    
+
+    st.markdown(f"### 👤 {st.session_state.user}")
+
     if st.button("🔴 Çıkış"): st.session_state.clear(); st.rerun()
 
-# --- 💬 ANA ARAŞTIRMA ---
-st.write(f"## {st.session_state.user}, Neyi Araştırıyoruz?")
-motor_tipi = st.segmented_control("Analiz Derinliği:", ["🏎️ Hızlı (2 Kaynak)", "🧠 Derin (15 Kaynak)"], default="🏎️ Hızlı (2 Kaynak)")
+    st.divider()
 
-sorgu = st.chat_input("Konuyu buraya yaz kanka...")
+    m_secim = st.radio("📡 Analiz Modu:", ["V1 (Wikipedia)", "V2 (Global - Canavar)", "V3 (Matematik)"])
 
-if sorgu:
-    st.session_state.son_sorgu = sorgu
-    st.session_state.konu = sorgu.title()
-    with st.spinner("🚀 TürkAI internetin altını üstüne getiriyor..."):
-        if "Hızlı" in motor_tipi:
-            st.session_state.bilgi = hizli_motor(sorgu)
-        else:
-            st.session_state.bilgi = derin_motor(sorgu)
-    st.rerun()
+    if m_secim == "V3 (Matematik)":
 
-# --- 📊 SONUÇLAR VE PDF ---
-if st.session_state.bilgi:
-    st.markdown(f"### 📌 Analiz Raporu: {st.session_state.konu}")
-    st.markdown(f"<div class='rapor-kutusu'>{st.session_state.bilgi}</div>", unsafe_allow_html=True)
-    
-    # PDF HAZIRLAMA
-    def pdf_yap():
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_font("Arial", 'B', 16)
-        pdf.cell(0, 10, txt=pdf_tr_fix(f"TurkAI Raporu: {st.session_state.konu}"), ln=True, align='C')
-        pdf.ln(10)
-        pdf.set_font("Arial", size=12)
-        pdf.multi_cell(0, 10, txt=pdf_tr_fix(st.session_state.bilgi))
-        return pdf.output(dest='S').encode('latin-1')
+        st.markdown("<div class='ozel-not'>⚠️ <b>NOT:</b> Çarpı (x) yerine yıldız (<b>*</b>) kullan kanka.</div>", unsafe_allow_html=True)
 
     st.divider()
-    st.download_button("📄 PDF Raporunu İndir", data=pdf_yap(), file_name=f"TurkAI_{st.session_state.konu}.pdf", use_container_width=True)
+
+    c.execute("SELECT konu, icerik FROM aramalar WHERE kullanici=? ORDER BY tarih DESC LIMIT 10", (st.session_state.user,))
+
+    for k, i in c.fetchall():
+
+        if st.button(f"📌 {k[:20]}", key=f"h_{k}_{datetime.datetime.now().microsecond}", use_container_width=True):
+
+            st.session_state.bilgi, st.session_state.konu, st.session_state.son_sorgu = i, k, k
+
+            st.rerun()
+
+
+
+# --- 💻 ÇALIŞMA ALANI ---
+
+st.markdown("## TürkAI Araştırma Terminali")
+
+st.markdown("<div class='kullanim-notu'>💡 <b>TÜYO:</b> Araştırmak istediğiniz konunun anahtar kelimesini yazınız. ❌ <i>Türk kimdir?</i> ✅ <b>Türk</b></div>", unsafe_allow_html=True)
+
+
+
+sorgu = st.chat_input("Neyi analiz edelim kanka?")
+
+
+
+if sorgu:
+
+    st.session_state.son_sorgu = sorgu
+
+    h = {'User-Agent': 'Mozilla/5.0'}
+
     
-    if st.button("🔄 Analizi Beğenmedim, Derine İn"):
-        st.session_state.bilgi = derin_motor(st.session_state.son_sorgu)
-        st.rerun()
+
+    # --- MOTORLAR (ORİJİNAL) ---
+
+    if m_secim == "V1 (Wikipedia)":
+
+        try:
+
+            r = requests.get(f"https://tr.wikipedia.org/w/api.php?action=query&list=search&srsearch={sorgu}&format=json", headers=h).json()
+
+            head = r['query']['search'][0]['title']
+
+            soup = BeautifulSoup(requests.get(f"https://tr.wikipedia.org/wiki/{head.replace(' ', '_')}", headers=h).text, 'html.parser')
+
+            info = "\n\n".join([p.get_text() for p in soup.find_all('p') if len(p.get_text()) > 50][:4])
+
+            st.session_state.bilgi, st.session_state.konu = info, head
+
+        except: st.session_state.bilgi = "Sonuç bulunamadı."
+
+    elif m_secim == "V2 (Global - Canavar)":
+
+        try:
+
+            wiki_api = f"https://tr.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(sorgu)}"
+
+            r_wiki = requests.get(wiki_api, headers=h).json()
+
+            bilgi = r_wiki.get('extract', "Maalesef özet bilgiye ulaşılamadı.")
+
+            st.session_state.bilgi, st.session_state.konu = bilgi, sorgu.title()
+
+        except: st.session_state.bilgi = "Hata oluştu."
+
+    elif m_secim == "V3 (Matematik)":
+
+        try:
+
+            res = eval("".join(c for c in sorgu if c in "0123456789+-*/(). "), {"__builtins__": {}}, {})
+
+            st.session_state.bilgi, st.session_state.konu = f"Sonuç: {res}", "Matematik"
+
+        except: st.session_state.bilgi = "Hesap hatası."
+
+
+
+    if st.session_state.bilgi:
+
+        c.execute("INSERT INTO aramalar VALUES (?,?,?,?,?)", (st.session_state.user, st.session_state.konu, st.session_state.bilgi, str(datetime.datetime.now()), m_secim))
+
+        conn.commit(); st.rerun()
+
+
+
+# --- 📊 GÖRÜNÜM VE PDF SİSTEMİ ---
+
+if st.session_state.son_sorgu:
+
+    st.markdown(f"<div class='user-msg'><b>Siz:</b><br>{st.session_state.son_sorgu}</div>", unsafe_allow_html=True)
+
+
+
+if st.session_state.bilgi:
+
+    st.markdown(f"### 🇹🇷 Analiz: {st.session_state.konu}")
+
+    st.markdown(f"<div class='ai-rapor-alani'>{st.session_state.bilgi}</div>", unsafe_allow_html=True)
+
+    
+
+    # --- 📄 PDF OLUŞTURMA MOTORU ---
+
+    def pdf_yap():
+
+        pdf = FPDF()
+
+        pdf.add_page()
+
+        pdf.set_font("Arial", 'B', 16)
+
+        pdf.cell(200, 10, txt="TurkAI Analiz Raporu", ln=True, align='C')
+
+        pdf.ln(10)
+
+        pdf.set_font("Arial", size=12)
+
+        
+
+        # Türkçe karakterleri PDF'in anlayacağı dile çeviren küçük filtre
+
+        def temizle(t):
+
+            d = {'İ':'I','ı':'i','Ş':'S','ş':'s','Ğ':'G','ğ':'g','Ü':'U','ü':'u','Ö':'O','ö':'o','Ç':'C','ç':'c'}
+
+            for k,v in d.items(): t = t.replace(k,v)
+
+            return t
+
+
+
+        metin = f"Konu: {temizle(st.session_state.konu)}\n\nRapor:\n{temizle(st.session_state.bilgi)}\n\nKullanici: {temizle(st.session_state.user)}"
+
+        pdf.multi_cell(0, 10, txt=metin.encode('latin-1', 'replace').decode('latin-1'))
+
+        return pdf.output(dest='S').encode('latin-1')
+
+
+
+    st.download_button("📄 Analizi PDF Olarak İndir", data=pdf_yap(), file_name=f"TurkAI_{st.session_state.konu}.pdf", mime="application/pdf")     
