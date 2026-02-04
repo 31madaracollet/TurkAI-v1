@@ -1,58 +1,325 @@
-# ANA ARAMA KISMI (st.chat_input veya buton tetikleyicisinde)
-if sorgu:
-    st.session_state.son_sorgu = sorgu
-    
-    # Eğer yeniden üret butonuna basıldıysa, mevcut site indeksini kullan
-    current_index = st.session_state.get('current_site_index', 0)
-    
-    # Arama yap
-    result = smart_search_engine(
-        sorgu, 
-        current_site_index=current_index,
-        mode="fast" if "Hızlı" in motor_choice else "deep"
-    )
-    
-    if result:
-        # Sonucu session state'e kaydet
-        st.session_state.bilgi = result['content']
-        st.session_state.konu = sorgu
-        st.session_state.current_site_index = result['next_index']
-        st.session_state.result_info = result  # Ek bilgileri sakla
-        
-        # Veritabanına kaydet
-        c.execute("INSERT INTO aramalar VALUES (NULL,?,?,?,?,?)", 
-                 (st.session_state.user, sorgu, result['content'], 
-                  datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                  motor_choice))
-        conn.commit()
-    else:
-        st.error("Hiçbir sitede sonuç bulunamadı.")
+import streamlit as st
+import requests
+from bs4 import BeautifulSoup
+import datetime
+import sqlite3
+import hashlib
+import urllib.parse
+import re
+import time
+import math
+import random
+from fpdf import FPDF
 
-# SONUÇLARI GÖSTERME
-if st.session_state.bilgi and st.session_state.son_sorgu:
-    st.markdown(f"### 🔍 Analiz: {st.session_state.konu}")
+# --- ⚙️ SİSTEM AYARLARI ---
+st.set_page_config(page_title="TürkAI Analiz Merkezi", page_icon="🇹🇷", layout="wide")
+
+# --- PDF OLUŞTURMA FONKSİYONU (FIXED) ---
+def create_pdf_safe():
+    """Güvenli PDF oluşturma - FPDF ile"""
+    pdf = FPDF()
+    pdf.add_page()
     
-    # Sonuç kutusu
-    with st.container():
-        st.markdown(st.session_state.bilgi)
+    # Türkçe karakter desteği için
+    pdf.add_font('DejaVu', '', 'DejaVuSansCondensed.ttf', uni=True)
+    pdf.set_font('DejaVu', '', 14)
+    
+    # Emoji ve özel karakterleri temizleme
+    def clean_text(text):
+        # Emojileri kaldır
+        emoji_pattern = re.compile("["
+            u"\U0001F600-\U0001F64F"  # emoticons
+            u"\U0001F300-\U0001F5FF"  # symbols & pictographs
+            u"\U0001F680-\U0001F6FF"  # transport & map symbols
+            u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
+            u"\u26a1\u26a0\u2705\u274c\u2b50"  # diğer özel karakterler
+            "]+", flags=re.UNICODE)
+        text = emoji_pattern.sub(r'', text)
         
-        # "Yeniden Üret" butonu - sağ alt köşe
-        col1, col2, col3 = st.columns([3, 1, 1])
-        with col3:
-            if st.button("🔄 Yeniden Üret", key="regenerate_btn"):
-                # Mevcut site indeksini koruyarak yeniden ara
+        # Türkçe karakterleri düzelt
+        replacements = {
+            'İ': 'I', 'ı': 'i', 'Ş': 'S', 'ş': 's',
+            'Ğ': 'G', 'ğ': 'g', 'Ü': 'U', 'ü': 'u',
+            'Ö': 'O', 'ö': 'o', 'Ç': 'C', 'ç': 'c'
+        }
+        for old, new in replacements.items():
+            text = text.replace(old, new)
+        
+        return text
+    
+    # PDF başlığı
+    pdf.set_font('DejaVu', 'B', 16)
+    pdf.cell(200, 10, txt="TURKAI ANALIZ RAPORU", ln=True, align='C')
+    pdf.ln(10)
+    
+    pdf.set_font('DejaVu', '', 12)
+    
+    # Rapor içeriği
+    if 'user' in st.session_state:
+        user = clean_text(st.session_state.user)
+    else:
+        user = "Misafir"
+    
+    if 'konu' in st.session_state:
+        konu = clean_text(st.session_state.konu)
+    else:
+        konu = "Belirsiz"
+    
+    if 'bilgi' in st.session_state and st.session_state.bilgi:
+        bilgi = clean_text(st.session_state.bilgi)
+    else:
+        bilgi = "Icerik bulunamadi."
+    
+    # PDF içeriği
+    content = f"""
+KULLANICI: {user}
+TARIH: {datetime.datetime.now().strftime('%d.%m.%Y %H:%M')}
+KONU: {konu}
+
+ANALIZ SONUCLARI:
+{bilgi}
+
+---
+TurkAI Analiz Sistemi | {datetime.datetime.now().strftime('%Y')}
+"""
+    
+    # PDF'e yaz
+    pdf.multi_cell(0, 10, txt=content)
+    
+    # Bytes'a dönüştür (latin-1 yerine binary)
+    try:
+        pdf_output = pdf.output(dest='S')
+        # Latin-1 hata verirse, binary olarak döndür
+        return pdf_output.encode('latin-1', 'ignore')
+    except:
+        # Direkt bytes olarak döndür
+        return pdf.output(dest='S').encode('utf-8', 'ignore')
+
+# Alternatif: Daha basit PDF oluşturma
+def create_simple_pdf():
+    """Daha basit ve güvenli PDF"""
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    
+    # ASCII karakterlere çevir
+    def to_ascii(text):
+        if not text:
+            return ""
+        # Sadece ASCII karakterleri koru
+        return ''.join(char for char in str(text) if ord(char) < 128)
+    
+    # Başlık
+    pdf.set_font("Arial", 'B', 16)
+    pdf.cell(200, 10, txt="TURKAI REPORT", ln=True, align='C')
+    pdf.ln(5)
+    
+    # Bilgiler
+    pdf.set_font("Arial", size=12)
+    
+    user = to_ascii(st.session_state.get('user', 'Guest'))
+    konu = to_ascii(st.session_state.get('konu', 'No Topic'))
+    tarih = datetime.datetime.now().strftime('%d.%m.%Y %H:%M')
+    
+    pdf.cell(200, 10, txt=f"User: {user}", ln=True)
+    pdf.cell(200, 10, txt=f"Date: {tarih}", ln=True)
+    pdf.cell(200, 10, txt=f"Topic: {konu}", ln=True)
+    pdf.ln(10)
+    
+    # İçerik
+    if 'bilgi' in st.session_state and st.session_state.bilgi:
+        content = to_ascii(st.session_state.bilgi)
+        # Uzun metni parçalara böl
+        lines = content.split('\n')
+        for line in lines[:50]:  # İlk 50 satır
+            if line.strip():
+                pdf.multi_cell(0, 10, txt=line[:200])  # Satır başına 200 karakter
+    
+    pdf.ln(10)
+    pdf.cell(200, 10, txt="Generated by TurkAI System", ln=True, align='C')
+    
+    # Output
+    return pdf.output(dest='S').encode('latin-1')
+
+# --- TÜRKAI ANA KODU (KISALTILMIŞ) ---
+
+# Tema CSS
+st.markdown("""
+<style>
+.stApp { background-color: #ffffff; }
+h1, h2, h3 { color: #cc0000 !important; }
+.stButton > button {
+    background-color: #cc0000 !important;
+    color: white !important;
+    border-radius: 10px;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# Session state başlat
+if 'user' not in st.session_state:
+    st.session_state.user = None
+if 'bilgi' not in st.session_state:
+    st.session_state.bilgi = None
+if 'konu' not in st.session_state:
+    st.session_state.konu = ""
+
+# Basit giriş sistemi
+if not st.session_state.user:
+    st.title("🇹🇷 TürkAI - Giriş")
+    
+    # Boş label hatası için düzeltme
+    auth_mode = st.radio("İşlem Seçin:", ["Giriş Yap", "Kayıt Ol"], horizontal=True)
+    
+    if auth_mode == "Giriş Yap":
+        with st.form("login"):
+            username = st.text_input("Kullanıcı Adı")
+            password = st.text_input("Şifre", type="password")
+            if st.form_submit_button("Giriş"):
+                st.session_state.user = username or "Misafir"
                 st.rerun()
-        
-        # PDF indirme butonu
-        with col1:
-            try:
-                pdf_data = create_pdf()
-                st.download_button(
-                    label="📄 PDF'e Dönüştür",
-                    data=pdf_data,
-                    file_name=f"turkai_{st.session_state.konu[:15]}.pdf",
-                    mime="application/pdf",
-                    use_container_width=True
-                )
-            except Exception as e:
-                st.error(f"PDF oluşturulamadı: {str(e)[:50]}")
+    
+    else:
+        with st.form("register"):
+            new_user = st.text_input("Yeni Kullanıcı")
+            new_pass = st.text_input("Yeni Şifre", type="password")
+            if st.form_submit_button("Kayıt Ol"):
+                st.session_state.user = new_user or "Misafir"
+                st.rerun()
+    
+    # Misafir girişi
+    if st.button("👤 Misafir Olarak Devam Et"):
+        st.session_state.user = "Misafir"
+        st.rerun()
+    
+    st.stop()
+
+# Ana panel
+st.title(f"🇹🇷 Hoş geldin, {st.session_state.user}!")
+
+# Arama kutusu - BOŞ LABEL HATASI DÜZELTİLDİ
+sorgu = st.text_input("Aranacak konuyu yazın:", placeholder="Ör: Türk tarihi, Python, matematik...")
+
+if st.button("🔍 Araştır") and sorgu:
+    with st.spinner("Aranıyor..."):
+        # Basit Wikipedia araması
+        try:
+            url = f"https://tr.wikipedia.org/w/api.php?action=query&list=search&srsearch={sorgu}&format=json"
+            response = requests.get(url, timeout=10)
+            data = response.json()
+            
+            if data['query']['search']:
+                title = data['query']['search'][0]['title']
+                snippet = data['query']['search'][0]['snippet']
+                
+                # HTML etiketlerini temizle
+                snippet = re.sub('<[^<]+?>', '', snippet)
+                
+                st.session_state.bilgi = f"📚 **{title}**\n\n{snippet}"
+                st.session_state.konu = sorgu
+                
+                st.success("✅ Sonuç bulundu!")
+            else:
+                st.session_state.bilgi = "❌ Sonuç bulunamadı."
+                st.session_state.konu = sorgu
+        except:
+            st.session_state.bilgi = "⚠️ Arama sırasında hata oluştu."
+            st.session_state.konu = sorgu
+    
+    st.rerun()
+
+# Sonuçları göster
+if st.session_state.bilgi:
+    st.markdown(f"### 📊 Analiz: {st.session_state.konu}")
+    st.markdown(st.session_state.bilgi)
+    
+    # PDF butonu - HATA DÜZELTİLDİ
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        try:
+            # create_pdf_safe() fonksiyonunu kullan
+            pdf_data = create_simple_pdf()
+            st.download_button(
+                label="📄 PDF İndir",
+                data=pdf_data,
+                file_name=f"turkai_{st.session_state.konu[:15]}.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
+        except Exception as e:
+            st.error(f"PDF hatası: {str(e)[:50]}")
+            # Alternatif buton
+            if st.button("📄 Basit PDF Oluştur", use_container_width=True):
+                try:
+                    # En basit PDF
+                    pdf = FPDF()
+                    pdf.add_page()
+                    pdf.set_font("Arial", size=12)
+                    pdf.cell(200, 10, txt="TurkAI Rapor", ln=True, align='C')
+                    pdf.cell(200, 10, txt=f"Konu: {st.session_state.konu}", ln=True)
+                    pdf_output = pdf.output(dest='S')
+                    st.download_button(
+                        label="📄 İndir",
+                        data=pdf_output.encode('latin-1'),
+                        file_name="rapor.pdf",
+                        mime="application/pdf"
+                    )
+                except:
+                    st.error("PDF oluşturulamadı")
+    
+    with col2:
+        if st.button("🔄 Yeniden Ara", use_container_width=True):
+            st.session_state.bilgi = None
+            st.rerun()
+    
+    with col3:
+        if st.button("🚪 Çıkış", use_container_width=True):
+            st.session_state.user = None
+            st.session_state.bilgi = None
+            st.rerun()
+
+# Boş sayfa için
+elif not st.session_state.bilgi:
+    st.info("🔍 Bir konu araştırmak için yukarıya yazın ve 'Araştır' butonuna basın.")
+    
+    # Örnek aramalar
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if st.button("Türk Tarihi"):
+            st.session_state.konu = "Türk Tarihi"
+            st.session_state.bilgi = "📚 **Türk Tarihi**\n\nTürkler, Orta Asya kökenli bir halktır. Tarih boyunca birçok devlet kurmuşlardır."
+            st.rerun()
+    with col2:
+        if st.button("Python"):
+            st.session_state.konu = "Python"
+            st.session_state.bilgi = "📚 **Python**\n\nPython, yüksek seviyeli bir programlama dilidir. Basit sözdizimi ile bilinir."
+            st.rerun()
+    with col3:
+        if st.button("Matematik"):
+            st.session_state.konu = "Matematik"
+            st.session_state.bilgi = "📚 **Matematik**\n\nMatematik, sayılar, yapılar, uzay ve değişim gibi konuları inceleyen bilim dalıdır."
+            st.rerun()
+
+# Basit sidebar
+with st.sidebar:
+    st.markdown(f"### 👤 {st.session_state.user}")
+    
+    if st.button("🔴 Çıkış Yap"):
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        st.rerun()
+    
+    st.markdown("---")
+    st.markdown("### 📜 Son Aramalar")
+    
+    # Örnek geçmiş
+    if st.button("Türk Tarihi"):
+        st.session_state.konu = "Türk Tarihi"
+        st.session_state.bilgi = "📚 **Türk Tarihi**\n\nTürkler, Orta Asya kökenli bir halktır."
+        st.rerun()
+    
+    if st.button("Python Programlama"):
+        st.session_state.konu = "Python"
+        st.session_state.bilgi = "📚 **Python**\n\nPython programlama dili."
+        st.rerun()
