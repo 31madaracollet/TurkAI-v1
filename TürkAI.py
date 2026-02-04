@@ -314,42 +314,59 @@ if st.session_state.bilgi:
 
     
 
-    # --- 📄 PDF OLUŞTURMA MOTORU ---
-
+  # --- 📄 PDF OLUŞTURMA MOTORU (TAMİR EDİLDİ) ---
     def pdf_yap():
+        try:
+            pdf = FPDF()
+            pdf.add_page()
+            
+            # PDF standart fontları için Türkçe karakter çevirici (Daha sağlam versiyon)
+            def temizle(t):
+                if not t: return ""
+                d = {'İ':'I','ı':'i','Ş':'S','ş':'s','Ğ':'G','ğ':'g','Ü':'U','ü':'u','Ö':'O','ö':'o','Ç':'C','ç':'c'}
+                for k,v in d.items(): 
+                    t = t.replace(k,v)
+                # Standart dışı tüm karakterleri (emoji vs.) temizle
+                return re.sub(r'[^\x00-\x7F]+', ' ', t)
 
-        pdf = FPDF()
+            # Başlık
+            pdf.set_font("Arial", 'B', 16)
+            pdf.cell(190, 10, txt="TurkAI Analiz Raporu", ln=True, align='C')
+            pdf.ln(10)
 
-        pdf.add_page()
+            # İçerik
+            pdf.set_font("Arial", size=12)
+            
+            konu_txt = f"Konu: {temizle(st.session_state.konu)}"
+            rapor_txt = f"\nRapor:\n{temizle(st.session_state.bilgi)}"
+            kullanici_txt = f"\n\nKullanici: {temizle(st.session_state.user)}"
+            
+            tam_metin = konu_txt + rapor_txt + kullanici_txt
+            
+            # PDF'e metni yazdır
+            pdf.multi_cell(0, 10, txt=tam_metin)
 
-        pdf.set_font("Arial", 'B', 16)
+            # --- HATA ÇÖZÜMÜ BURASI ---
+            # fpdf2 veya eski fpdf versiyonlarına göre çıktı yönetimi
+            cikti = pdf.output(dest='S')
+            
+            if isinstance(cikti, str):
+                # Eğer çıktı string ise latin-1'e çevir
+                return cikti.encode('latin-1', 'replace')
+            else:
+                # Eğer çıktı zaten bytes/bytearray ise direkt döndür
+                return bytes(cikti)
+                
+        except Exception as e:
+            st.error(f"PDF oluşturulurken bir hata oluştu: {e}")
+            return None
 
-        pdf.cell(200, 10, txt="TurkAI Analiz Raporu", ln=True, align='C')
-
-        pdf.ln(10)
-
-        pdf.set_font("Arial", size=12)
-
-        
-
-        # Türkçe karakterleri PDF'in anlayacağı dile çeviren küçük filtre
-
-        def temizle(t):
-
-            d = {'İ':'I','ı':'i','Ş':'S','ş':'s','Ğ':'G','ğ':'g','Ü':'U','ü':'u','Ö':'O','ö':'o','Ç':'C','ç':'c'}
-
-            for k,v in d.items(): t = t.replace(k,v)
-
-            return t
-
-
-
-        metin = f"Konu: {temizle(st.session_state.konu)}\n\nRapor:\n{temizle(st.session_state.bilgi)}\n\nKullanici: {temizle(st.session_state.user)}"
-
-        pdf.multi_cell(0, 10, txt=metin.encode('latin-1', 'replace').decode('latin-1'))
-
-        return pdf.output(dest='S').encode('latin-1')
-
-
-
-    st.download_button("📄 Analizi PDF Olarak İndir", data=pdf_yap(), file_name=f"TurkAI_{st.session_state.konu}.pdf", mime="application/pdf")     
+    # İndirme butonu (Mime tipini de sağlama alalım)
+    pdf_data = pdf_yap()
+    if pdf_data:
+        st.download_button(
+            label="📄 Analizi PDF Olarak İndir",
+            data=pdf_data,
+            file_name=f"TurkAI_{st.session_state.konu}.pdf",
+            mime="application/pdf"
+        )
