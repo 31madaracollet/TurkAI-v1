@@ -8,19 +8,21 @@ import urllib.parse
 import re
 import time
 from fpdf import FPDF
-# --- KRİTİK DÜZELTME: Bu kütüphane şart ---
+
+# --- KÜTÜPHANE KONTROLÜ ---
 try:
     from duckduckgo_search import DDGS
 except ImportError:
-    st.error("Kütüphane eksik! requirements.txt dosyasına 'duckduckgo-search' eklediğinden emin ol.")
+    st.error("⚠️ Kritik Hata: 'duckduckgo-search' yüklü değil! requirements.txt dosyasını kontrol et.")
+    st.stop()
 
 # --- ⚙️ SİSTEM AYARLARI ---
 st.set_page_config(page_title="TürkAI | Kurumsal Analiz Platformu", page_icon="🇹🇷", layout="wide")
 
-# --- 🔗 GITHUB DIREKT INDIRME LINKI ---
+# --- 🔗 GITHUB APK LINKI ---
 APK_URL = "https://github.com/31madaracollet/TurkAI-v1/raw/refs/heads/main/4e47617eff77a24ebec8.apk"
 
-# --- 🎨 DİNAMİK TEMA VE CSS ---
+# --- 🎨 TASARIM (CSS) ---
 st.markdown("""
     <style>
     :root { --primary-red: #cc0000; }
@@ -35,7 +37,7 @@ st.markdown("""
         text-align: center; padding: 14px; border-radius: 8px; text-decoration: none; 
         font-weight: 600; margin-bottom: 20px; transition: 0.3s;
     }
-    .apk-buton-link:hover { transform: scale(1.01); opacity: 0.9; }
+    .apk-buton-link:hover { transform: scale(1.02); opacity: 0.9; }
     
     .sidebar-indir-link {
         display: block; background-color: transparent; color: inherit !important; text-align: center; 
@@ -65,94 +67,104 @@ def db_baslat():
     return conn, c
 conn, c = db_baslat()
 
-# --- 🔄 GELİŞMİŞ MOTOR FONKSİYONLARI ---
+# --- 🔄 MOTOR FONKSİYONLARI ---
+
 def yazi_efekti(text):
-    """Yazıyı tane tane yazar (Typewriter effect)"""
+    """Yazıyı daktilo efektiyle yazar"""
     placeholder = st.empty()
     full_text = ""
     for word in text.split():
         full_text += word + " "
         placeholder.markdown(f"<div class='ai-rapor-alani'>{full_text}▌</div>", unsafe_allow_html=True)
-        time.sleep(0.02) # Hız
+        time.sleep(0.02)
     placeholder.markdown(f"<div class='ai-rapor-alani'>{full_text}</div>", unsafe_allow_html=True)
 
 def derin_arama(sorgu):
-    """GÜÇLENDİRİLMİŞ DERİN ARAMA (DuckDuckGo Kütüphanesi ile)"""
+    """Sadece TÜRK sitelerini tarayan gelişmiş motor"""
     durum = st.empty()
     try:
-        # 1. Adım: Arama Sonuçlarını Çek (Kütüphane kullanarak - Engellenmez)
+        # 1. Adım: Türk Sitelerini Bul (region='tr-tr')
         linkler = []
-        # 'wt-wt' yerine 'tr-tr' bölgesi kullanıyoruz
         ddgs = DDGS()
-        results = ddgs.text(keywords=sorgu, region='tr-tr', safesearch='moderate', max_results=25)
+        # 'tr-tr' parametresi kritik! Sadece Türkiye sonuçlarını getirir.
+        results = ddgs.text(keywords=sorgu, region='tr-tr', safesearch='moderate', max_results=15)
         
         for r in results:
             linkler.append(r['href'])
         
         if not linkler:
-            return wiki_arama(sorgu)
+            return wiki_arama(sorgu) # Bulamazsa Wiki'ye dön
 
-        # 2. Adım: Siteleri tek tek gez
+        # 2. Adım: Siteleri Analiz Et
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/91.0.4472.124 Safari/537.36'}
         taranan = 0
         
         for link in linkler:
             taranan += 1
-            durum.caption(f"🧠 Ağ Analizi Yapılıyor ({taranan}/25): {link[:50]}...")
+            durum.caption(f"🧠 TürkAI Ağı Taranıyor ({taranan}/15): {link[:40]}...")
             
             try:
-                # 10 saniye mühlet veriyoruz
-                resp = requests.get(link, headers=headers, timeout=10)
+                # 8 saniye süre veriyoruz, açılmazsa geçer
+                resp = requests.get(link, headers=headers, timeout=8)
                 if resp.status_code != 200: continue
                 
                 soup = BeautifulSoup(resp.text, 'html.parser')
                 
-                # REKLAM VE ÇÖP TEMİZLİĞİ
-                for gereksiz in soup(["script", "style", "nav", "footer", "header", "aside", "form"]):
+                # Gereksizleri temizle
+                for gereksiz in soup(["script", "style", "nav", "footer", "header", "aside", "form", "iframe"]):
                     gereksiz.extract()
                 
-                # En dolu paragrafı bul
+                # Metinleri çek
                 paragraflar = soup.find_all('p')
-                metinler = [p.get_text().strip() for p in paragraflar if len(p.get_text().strip()) > 150]
-                
-                # Eğer sağlam bir metin bulduysak (En az 300 karakter)
-                ana_metin = "\n\n".join(metinler[:5]) # İlk 5 dolu paragrafı al
+                metinler = [p.get_text().strip() for p in paragraflar if len(p.get_text().strip()) > 100]
+                ana_metin = "\n\n".join(metinler[:8]) # İlk 8 sağlam paragrafı al
                 
                 if len(ana_metin) > 300:
                     durum.empty()
-                    return ana_metin, f"{sorgu.title()} (Kaynak: Global Ağ)"
+                    return ana_metin, f"{sorgu.title()} (Kaynak: Türk Web Ağı)"
             
-            except Exception as e:
-                continue # Hata veren siteyi pas geç
+            except:
+                continue
         
         durum.empty()
-        return wiki_arama(sorgu) # Hiçbir siteden veri çıkmazsa Wiki'ye dön
+        return wiki_arama(sorgu)
         
     except Exception as e:
         durum.empty()
-        # Eğer kütüphane hata verirse Wiki'ye dön
         return wiki_arama(sorgu)
 
 def wiki_arama(sorgu):
-    """Hızlı Motor"""
+    """Wikipedia (Hata korumalı)"""
+    headers = {'User-Agent': 'TurkAI/1.0 (Research Bot)'}
     try:
-        r = requests.get(f"https://tr.wikipedia.org/w/api.php?action=query&list=search&srsearch={sorgu}&format=json").json()
-        if not r['query']['search']:
-            return "Veri tabanlarında bu konuyla ilgili bilgi bulunamadı.", "Sonuç Yok"
+        # Search
+        api_url = "https://tr.wikipedia.org/w/api.php"
+        params = {
+            "action": "query",
+            "list": "search",
+            "srsearch": sorgu,
+            "format": "json"
+        }
+        r = requests.get(api_url, params=params, headers=headers, timeout=5).json()
+        
+        if not r.get('query', {}).get('search'):
+            return "Veri tabanlarında bilgi bulunamadı.", "Sonuç Yok"
             
         title = r['query']['search'][0]['title']
-        page = requests.get(f"https://tr.wikipedia.org/wiki/{title.replace(' ', '_')}").text
+        
+        # Content Fetch
+        page_url = f"https://tr.wikipedia.org/wiki/{title.replace(' ', '_')}"
+        page = requests.get(page_url, headers=headers, timeout=5).text
         soup = BeautifulSoup(page, 'html.parser')
         
-        # Sadece <p> etiketlerini alıp birleştir
         info = "\n\n".join([p.get_text() for p in soup.find_all('p') if len(p.get_text()) > 60][:5])
         
         if not info: return "İçerik çekilemedi.", title
         return info, title
     except:
-        return "Bağlantı hatası veya veri yok.", "Hata"
+        return "Bağlantı kurulamadı veya sunucu yoğun.", "Hata"
 
-# --- 🔑 GİRİŞ İŞLEMLERİ ---
+# --- 🔑 GİRİŞ ---
 if "user" not in st.session_state: st.session_state.user = None
 if "bilgi" not in st.session_state: st.session_state.bilgi = None
 if "konu" not in st.session_state: st.session_state.konu = ""
@@ -193,7 +205,7 @@ with st.sidebar:
     st.divider()
     
     st.markdown("**Analiz Motoru:**")
-    motor = st.selectbox("", ["🚀 Hızlı Motor (Wiki+)", "🧠 Derin Düşünen (Global-25)", "🧮 Matematik Birimi"], label_visibility="collapsed")
+    motor = st.selectbox("", ["🧠 Derin Düşünen (Türk Ağı)", "🚀 Hızlı Motor (Wiki)", "🧮 Matematik Birimi"], label_visibility="collapsed")
     if motor == "🧮 Matematik Birimi": st.info("ℹ️ Çarpma için '*' kullanın.")
     
     st.divider()
@@ -206,7 +218,7 @@ with st.sidebar:
 
 # --- 💻 TERMİNAL ---
 st.title("Araştırma Terminali")
-st.markdown("<div style='opacity:0.7; font-size:14px; margin-bottom:10px;'>💡 <b>İpucu:</b> Örn: 'Mustafa Kemal Atatürk' (Hatalı: Kimdir?)</div>", unsafe_allow_html=True)
+st.markdown("<div style='opacity:0.7; font-size:14px; margin-bottom:10px;'>💡 <b>İpucu:</b> Örn: 'Osmanlı İmparatorluğu' (Hatalı: Nedir?)</div>", unsafe_allow_html=True)
 
 sorgu = st.chat_input("Veri girişi yapınız...")
 
@@ -214,10 +226,10 @@ if sorgu:
     st.session_state.bilgi = None 
     
     with st.spinner('TürkAI Veri Madenciliği Yapıyor...'):
-        if motor == "🚀 Hızlı Motor (Wiki+)":
+        if motor == "🚀 Hızlı Motor (Wiki)":
             bilgi, baslik = wiki_arama(sorgu)
             
-        elif motor == "🧠 Derin Düşünen (Global-25)":
+        elif motor == "🧠 Derin Düşünen (Türk Ağı)":
             bilgi, baslik = derin_arama(sorgu)
             
         elif motor == "🧮 Matematik Birimi":
@@ -227,7 +239,6 @@ if sorgu:
             except:
                 bilgi, baslik = "Hata.", "Matematik"
 
-    # Sonuçları ekrana bas
     st.subheader(f"Rapor: {baslik}")
     yazi_efekti(bilgi)
     
@@ -238,26 +249,51 @@ if sorgu:
         c.execute("INSERT INTO aramalar VALUES (?,?,?,?,?)", (st.session_state.user, baslik, bilgi, str(datetime.datetime.now()), motor))
         conn.commit()
 
-# --- 🔽 AKSİYONLAR ---
+# --- 🔽 PDF OLUŞTURUCU (Hata Düzeltildi) ---
 if st.session_state.bilgi:
     col1, col2 = st.columns(2)
-    with col1:
-        # PDF
-        def create_pdf():
-            try:
-                pdf = FPDF()
-                pdf.add_page()
-                pdf.set_font("Arial", 'B', 16); pdf.cell(190, 10, "TURKAI RAPORU", ln=True, align='C')
-                pdf.set_font("Arial", size=12)
-                # Basit karakter düzeltme
-                tr_map = str.maketrans("ğĞüÜşŞİıöÖçÇ", "gGuUsSiioOcC")
-                clean_text = st.session_state.bilgi.translate(tr_map)
-                clean_title = st.session_state.konu.translate(tr_map)
-                pdf.multi_cell(0, 10, f"\nKONU: {clean_title}\n\n{clean_text}")
-                return pdf.output(dest='S').encode('latin-1')
-            except: return None
+    
+    # PDF oluşturma fonksiyonunu dışarı aldık ve sağlamlaştırdık
+    def generate_pdf_data(text, subject, user):
+        try:
+            pdf = FPDF()
+            pdf.add_page()
             
-        st.download_button("📊 PDF İndir", data=create_pdf(), file_name="rapor.pdf", mime="application/pdf", use_container_width=True)
+            # Türkçe Karakter Haritası (Kritik nokta burası)
+            tr_chars = {"ı": "i", "ğ": "g", "ü": "u", "ş": "s", "ö": "o", "ç": "c", 
+                        "İ": "I", "Ğ": "G", "Ü": "U", "Ş": "S", "Ö": "O", "Ç": "C"}
+            
+            def clean_text(input_text):
+                if not input_text: return ""
+                for tr, eng in tr_chars.items():
+                    input_text = input_text.replace(tr, eng)
+                # Emojileri ve bilinmeyen karakterleri temizle
+                return input_text.encode('latin-1', 'replace').decode('latin-1')
+
+            pdf.set_font("Arial", 'B', 16)
+            pdf.cell(190, 10, "TURKAI ANALIZ RAPORU", ln=True, align='C')
+            pdf.ln(10)
+            
+            pdf.set_font("Arial", size=12)
+            safe_subject = clean_text(subject)
+            safe_text = clean_text(text)
+            safe_user = clean_text(user)
+            
+            content = f"KONU: {safe_subject}\n\nRAPOR:\n{safe_text}\n\nOLUSTURAN: {safe_user}"
+            pdf.multi_cell(0, 10, content)
+            
+            return pdf.output(dest='S').encode('latin-1')
+        except Exception as e:
+            return None
+
+    # PDF verisini hazırla
+    pdf_bytes = generate_pdf_data(st.session_state.bilgi, st.session_state.konu, st.session_state.user)
+
+    with col1:
+        if pdf_bytes:
+            st.download_button("📊 PDF Rapor İndir", data=pdf_bytes, file_name="TurkAI_Rapor.pdf", mime="application/pdf", use_container_width=True)
+        else:
+            st.warning("PDF oluşturulamadı (Karakter hatası).")
     
     with col2:
         if st.button("👎 Beğenmedim", use_container_width=True):
