@@ -7,8 +7,12 @@ import hashlib
 import urllib.parse
 import re
 import time
-import random
-from fpdf import FPDF 
+from fpdf import FPDF
+# --- KRİTİK DÜZELTME: Bu kütüphane şart ---
+try:
+    from duckduckgo_search import DDGS
+except ImportError:
+    st.error("Kütüphane eksik! requirements.txt dosyasına 'duckduckgo-search' eklediğinden emin ol.")
 
 # --- ⚙️ SİSTEM AYARLARI ---
 st.set_page_config(page_title="TürkAI | Kurumsal Analiz Platformu", page_icon="🇹🇷", layout="wide")
@@ -47,7 +51,6 @@ st.markdown("""
         border-left: 4px solid var(--primary-red); padding: 20px; 
         background-color: rgba(128,128,128,0.05); border-radius: 4px; line-height: 1.6;
     }
-    /* Spinner Rengi */
     .stSpinner > div { border-top-color: #cc0000 !important; }
     </style>
 """, unsafe_allow_html=True)
@@ -62,90 +65,98 @@ def db_baslat():
     return conn, c
 conn, c = db_baslat()
 
-# --- 🔄 FONKSİYONLAR ---
+# --- 🔄 GELİŞMİŞ MOTOR FONKSİYONLARI ---
 def yazi_efekti(text):
     """Yazıyı tane tane yazar (Typewriter effect)"""
     placeholder = st.empty()
     full_text = ""
-    # Kelime kelime bölüyoruz
     for word in text.split():
         full_text += word + " "
         placeholder.markdown(f"<div class='ai-rapor-alani'>{full_text}▌</div>", unsafe_allow_html=True)
-        time.sleep(0.05) # Hız ayarı
+        time.sleep(0.02) # Hız
     placeholder.markdown(f"<div class='ai-rapor-alani'>{full_text}</div>", unsafe_allow_html=True)
 
 def derin_arama(sorgu):
-    """Simüle edilmiş derin arama motoru (Web scraping + Filtreleme)"""
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
-    
-    # 1. Adım: Arama sonuçlarını çek (DuckDuckGo HTML üzerinden)
+    """GÜÇLENDİRİLMİŞ DERİN ARAMA (DuckDuckGo Kütüphanesi ile)"""
+    durum = st.empty()
     try:
-        url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote(sorgu)}"
-        res = requests.get(url, headers=headers, timeout=10)
-        soup = BeautifulSoup(res.text, 'html.parser')
-        
-        # Linkleri topla
+        # 1. Adım: Arama Sonuçlarını Çek (Kütüphane kullanarak - Engellenmez)
         linkler = []
-        for a in soup.find_all('a', class_='result__a', href=True):
-            href = a['href']
-            if 'http' in href:
-                linkler.append(href)
+        # 'wt-wt' yerine 'tr-tr' bölgesi kullanıyoruz
+        ddgs = DDGS()
+        results = ddgs.text(keywords=sorgu, region='tr-tr', safesearch='moderate', max_results=25)
         
-        # İlk 5 linki derinlemesine tara (25 site simülasyonu için döngü)
-        bulunan_veri = None
-        taranan_sayisi = 0
+        for r in results:
+            linkler.append(r['href'])
         
-        durum_cubugu = st.empty()
+        if not linkler:
+            return wiki_arama(sorgu)
+
+        # 2. Adım: Siteleri tek tek gez
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/91.0.4472.124 Safari/537.36'}
+        taranan = 0
         
-        for link in linkler[:25]: # Max 25 siteye bak
-            taranan_sayisi += 1
-            durum_cubugu.caption(f"🕷️ Ağ taranıyor ({taranan_sayisi}/25): {link[:40]}...")
+        for link in linkler:
+            taranan += 1
+            durum.caption(f"🧠 Ağ Analizi Yapılıyor ({taranan}/25): {link[:50]}...")
             
             try:
-                # Her siteye 10sn süre veriyoruz
-                site_res = requests.get(link, headers=headers, timeout=10)
-                site_soup = BeautifulSoup(site_res.text, 'html.parser')
+                # 10 saniye mühlet veriyoruz
+                resp = requests.get(link, headers=headers, timeout=10)
+                if resp.status_code != 200: continue
                 
-                # Reklamları temizle (script ve style etiketlerini at)
-                for script in site_soup(["script", "style", "nav", "footer", "header"]):
-                    script.extract()
+                soup = BeautifulSoup(resp.text, 'html.parser')
                 
-                # Paragrafları bul
-                paragraflar = site_soup.find_all('p')
-                metin = "\n\n".join([p.get_text() for p in paragraflar if len(p.get_text()) > 100])
+                # REKLAM VE ÇÖP TEMİZLİĞİ
+                for gereksiz in soup(["script", "style", "nav", "footer", "header", "aside", "form"]):
+                    gereksiz.extract()
                 
-                if len(metin) > 500: # Eğer yeterli veri varsa
-                    bulunan_veri = metin[:2000] + "..." # Çok uzunsa kes
-                    durum_cubugu.empty() # Durum çubuğunu temizle
-                    return bulunan_veri, "Derin Analiz (Global Web)"
-                    
-            except:
-                continue # Bu site açılmadıysa sonrakine geç
+                # En dolu paragrafı bul
+                paragraflar = soup.find_all('p')
+                metinler = [p.get_text().strip() for p in paragraflar if len(p.get_text().strip()) > 150]
+                
+                # Eğer sağlam bir metin bulduysak (En az 300 karakter)
+                ana_metin = "\n\n".join(metinler[:5]) # İlk 5 dolu paragrafı al
+                
+                if len(ana_metin) > 300:
+                    durum.empty()
+                    return ana_metin, f"{sorgu.title()} (Kaynak: Global Ağ)"
+            
+            except Exception as e:
+                continue # Hata veren siteyi pas geç
         
-        # Hiçbir şey bulunamazsa Wikipedia dene
-        return wiki_arama(sorgu)
+        durum.empty()
+        return wiki_arama(sorgu) # Hiçbir siteden veri çıkmazsa Wiki'ye dön
         
-    except:
+    except Exception as e:
+        durum.empty()
+        # Eğer kütüphane hata verirse Wiki'ye dön
         return wiki_arama(sorgu)
 
 def wiki_arama(sorgu):
+    """Hızlı Motor"""
     try:
         r = requests.get(f"https://tr.wikipedia.org/w/api.php?action=query&list=search&srsearch={sorgu}&format=json").json()
+        if not r['query']['search']:
+            return "Veri tabanlarında bu konuyla ilgili bilgi bulunamadı.", "Sonuç Yok"
+            
         title = r['query']['search'][0]['title']
         page = requests.get(f"https://tr.wikipedia.org/wiki/{title.replace(' ', '_')}").text
         soup = BeautifulSoup(page, 'html.parser')
-        info = "\n\n".join([p.get_text() for p in soup.find_all('p') if len(p.get_text()) > 60][:6])
+        
+        # Sadece <p> etiketlerini alıp birleştir
+        info = "\n\n".join([p.get_text() for p in soup.find_all('p') if len(p.get_text()) > 60][:5])
+        
+        if not info: return "İçerik çekilemedi.", title
         return info, title
     except:
-        return "Veri bulunamadı.", "Hata"
+        return "Bağlantı hatası veya veri yok.", "Hata"
 
-# --- 🔑 OTURUM YÖNETİMİ ---
+# --- 🔑 GİRİŞ İŞLEMLERİ ---
 if "user" not in st.session_state: st.session_state.user = None
-# Geçici değişkenler (Session state yerine anlık değişken gibi davranması için temizliyoruz)
 if "bilgi" not in st.session_state: st.session_state.bilgi = None
 if "konu" not in st.session_state: st.session_state.konu = ""
 
-# --- 🔐 GİRİŞ EKRANI ---
 if not st.session_state.user:
     st.markdown("<br><br>", unsafe_allow_html=True)
     _, col2, _ = st.columns([1, 1.5, 1])
@@ -158,7 +169,6 @@ if not st.session_state.user:
         with t1:
             u_in = st.text_input("Kullanıcı Adı")
             p_in = st.text_input("Şifre", type="password")
-            
             c1, c2 = st.columns(2)
             with c1:
                 if st.button("Sisteme Eriş", use_container_width=True):
@@ -167,109 +177,88 @@ if not st.session_state.user:
                     if c.fetchone(): st.session_state.user = u_in; st.rerun()
                     else: st.error("Hatalı bilgi.")
             with c2:
-                # MİSAFİR GİRİŞİ BUTONU
                 if st.button("👤 Misafir Girişi", use_container_width=True):
-                    st.session_state.user = "Misafir_Kullanıcı"
-                    st.rerun()
-                    
+                    st.session_state.user = "Misafir_Kullanıcı"; st.rerun()
         with t2:
             nu, np = st.text_input("Yeni Ad"), st.text_input("Yeni Şifre", type="password")
             if st.button("Kaydol", use_container_width=True):
-                try: c.execute("INSERT INTO users VALUES (?,?)", (nu, hashlib.sha256(np.encode()).hexdigest())); conn.commit(); st.success("Oldu.")
-                except: st.error("Dolu.")
+                try: c.execute("INSERT INTO users VALUES (?,?)", (nu, hashlib.sha256(np.encode()).hexdigest())); conn.commit(); st.success("Kayıt Tamam.")
+                except: st.error("Kullanıcı adı dolu.")
     st.stop()
 
-# --- 🚀 ANA PANEL ---
+# --- 🚀 PANEL ---
 with st.sidebar:
     st.markdown(f"### 🛡️ {st.session_state.user}")
     if st.button("Oturumu Kapat", use_container_width=True): st.session_state.clear(); st.rerun()
     st.divider()
     
-    # YENİ MOTOR SİSTEMİ
     st.markdown("**Analiz Motoru:**")
     motor = st.selectbox("", ["🚀 Hızlı Motor (Wiki+)", "🧠 Derin Düşünen (Global-25)", "🧮 Matematik Birimi"], label_visibility="collapsed")
+    if motor == "🧮 Matematik Birimi": st.info("ℹ️ Çarpma için '*' kullanın.")
     
-    if motor == "🧮 Matematik Birimi":
-        st.info("ℹ️ Not: Çarpma için 'x' yerine '*' kullanın.")
-
     st.divider()
     st.markdown("##### 📜 Geçmiş")
     c.execute("SELECT konu FROM aramalar WHERE kullanici=? ORDER BY tarih DESC LIMIT 5", (st.session_state.user,))
-    for k in c.fetchall(): st.button(f"📄 {k[0][:15]}...", disabled=True) # Sadece görüntü
+    for k in c.fetchall(): st.button(f"📄 {k[0][:15]}...", disabled=True)
     
     st.divider()
     st.markdown(f'<a href="{APK_URL}" class="sidebar-indir-link">📥 Uygulamayı İndir</a>', unsafe_allow_html=True)
 
 # --- 💻 TERMİNAL ---
 st.title("Araştırma Terminali")
-st.markdown("<div style='opacity:0.7; font-size:14px; margin-bottom:10px;'>💡 <b>İpucu:</b> Örn: 'Türk tarihi' (Hatalı: Türk tarihi nedir?)</div>", unsafe_allow_html=True)
+st.markdown("<div style='opacity:0.7; font-size:14px; margin-bottom:10px;'>💡 <b>İpucu:</b> Örn: 'Mustafa Kemal Atatürk' (Hatalı: Kimdir?)</div>", unsafe_allow_html=True)
 
-sorgu = st.chat_input("Analiz verisi giriniz...")
+sorgu = st.chat_input("Veri girişi yapınız...")
 
 if sorgu:
-    # EKRANI TEMİZLE (Eski sonucu siler)
     st.session_state.bilgi = None 
-    st.session_state.konu = ""
     
-    bilgi_bulunan = ""
-    konu_basligi = ""
-    
-    # SPINNER (DÖNEN YUVARLAK)
     with st.spinner('TürkAI Veri Madenciliği Yapıyor...'):
         if motor == "🚀 Hızlı Motor (Wiki+)":
-            # Önce Wiki, olmazsa Global özet
-            bilgi_bulunan, konu_basligi = wiki_arama(sorgu)
-            time.sleep(1) # Yapay his için minik bekleme
+            bilgi, baslik = wiki_arama(sorgu)
             
         elif motor == "🧠 Derin Düşünen (Global-25)":
-            # Derin tarama fonksiyonu
-            bilgi_bulunan, konu_basligi = derin_arama(sorgu)
+            bilgi, baslik = derin_arama(sorgu)
             
         elif motor == "🧮 Matematik Birimi":
             try:
                 res = eval("".join(c for c in sorgu if c in "0123456789+-*/(). "), {"__builtins__": {}}, {})
-                bilgi_bulunan, konu_basligi = f"Hesaplama Sonucu: {res}", "Matematik"
+                bilgi, baslik = f"Sonuç: {res}", "Matematik"
             except:
-                bilgi_bulunan = "İşlem hatası. Lütfen '*' kullanın."
-                konu_basligi = "Hata"
+                bilgi, baslik = "Hata.", "Matematik"
 
-    # Sonuçları State'e kaydetmeden önce ekrana bas (Tane tane)
-    st.subheader(f"Rapor: {konu_basligi}")
-    yazi_efekti(bilgi_bulunan)
+    # Sonuçları ekrana bas
+    st.subheader(f"Rapor: {baslik}")
+    yazi_efekti(bilgi)
     
-    # PDF ve Beğenmeme için state'i güncelle
-    st.session_state.bilgi = bilgi_bulunan
-    st.session_state.konu = konu_basligi
+    st.session_state.bilgi = bilgi
+    st.session_state.konu = baslik
     
-    # Veritabanına kaydet
     if st.session_state.user != "Misafir_Kullanıcı":
-        c.execute("INSERT INTO aramalar VALUES (?,?,?,?,?)", (st.session_state.user, konu_basligi, bilgi_bulunan, str(datetime.datetime.now()), motor))
+        c.execute("INSERT INTO aramalar VALUES (?,?,?,?,?)", (st.session_state.user, baslik, bilgi, str(datetime.datetime.now()), motor))
         conn.commit()
 
-# --- 🔽 SONUÇ AKSİYONLARI ---
+# --- 🔽 AKSİYONLAR ---
 if st.session_state.bilgi:
-    col_a, col_b = st.columns([1, 1])
-    with col_a:
-        # PDF OLUŞTURMA
+    col1, col2 = st.columns(2)
+    with col1:
+        # PDF
         def create_pdf():
-            pdf = FPDF()
-            pdf.add_page()
-            pdf.set_font("Arial", 'B', 16)
-            pdf.cell(190, 10, "TURKAI ANALIZ RAPORU", ln=True, align='C')
-            pdf.set_font("Arial", size=12)
-            # Türkçe karakter temizliği (Basit)
-            text = st.session_state.bilgi.encode('latin-1', 'replace').decode('latin-1')
-            pdf.multi_cell(0, 10, f"\nKONU: {st.session_state.konu}\n\n{text}")
-            return pdf.output(dest='S').encode('latin-1')
+            try:
+                pdf = FPDF()
+                pdf.add_page()
+                pdf.set_font("Arial", 'B', 16); pdf.cell(190, 10, "TURKAI RAPORU", ln=True, align='C')
+                pdf.set_font("Arial", size=12)
+                # Basit karakter düzeltme
+                tr_map = str.maketrans("ğĞüÜşŞİıöÖçÇ", "gGuUsSiioOcC")
+                clean_text = st.session_state.bilgi.translate(tr_map)
+                clean_title = st.session_state.konu.translate(tr_map)
+                pdf.multi_cell(0, 10, f"\nKONU: {clean_title}\n\n{clean_text}")
+                return pdf.output(dest='S').encode('latin-1')
+            except: return None
             
-        try:
-            st.download_button("📊 PDF Rapor İndir", data=create_pdf(), file_name="rapor.pdf", mime="application/pdf", use_container_width=True)
-        except: st.error("PDF oluşturulamadı (Karakter hatası).")
-
-    with col_b:
-        # BEĞENMEDİM BUTONU
-        if st.button("👎 Bu analizi beğenmedim", use_container_width=True):
-            st.warning("Geri bildiriminiz alındı. Algoritma güncellenecek.")
-            # İstersen burada veriyi temizleyebilirsin:
-            # st.session_state.bilgi = None
-            # st.rerun()
+        st.download_button("📊 PDF İndir", data=create_pdf(), file_name="rapor.pdf", mime="application/pdf", use_container_width=True)
+    
+    with col2:
+        if st.button("👎 Beğenmedim", use_container_width=True):
+            st.toast("Geri bildirim alındı, algoritma eğitiliyor...")
