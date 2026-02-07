@@ -1,150 +1,149 @@
 import streamlit as st
+
 import requests
+
 from bs4 import BeautifulSoup
+
+import datetime
+
+import sqlite3
+
+import hashlib
+
 import urllib.parse
+
 import re
+
 import time
 
-# --- ⚙️ AYARLAR VE TASARIM ---
-st.set_page_config(page_title="TürkAI | Kesin Çözüm", page_icon="🇹🇷", layout="wide")
+from fpdf import FPDF
+
+
+
+# --- ⚙️ SİSTEM AYARLARI ---
+
+st.set_page_config(page_title="TürkAI | Kurumsal Analiz Platformu", page_icon="🇹🇷", layout="wide")
+
+
+
+# --- 🔗 GITHUB APK LINKI ---
+
+APK_URL = "https://github.com/31madaracollet/TurkAI-v1/raw/refs/heads/main/4e47617eff77a24ebec8.apk"
+
+
+
+# --- 🎨 TASARIM ---
 
 st.markdown("""
+
     <style>
+
     :root { --primary-red: #cc0000; }
-    .stSpinner > div { border-top-color: var(--primary-red) !important; }
-    .rapor-alani {
-        background-color: #ffffff;
-        color: #1a1a1a;
-        padding: 25px;
-        border-radius: 15px;
-        border-left: 8px solid var(--primary-red);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        font-size: 1.1rem;
-        line-height: 1.6;
-    }
+
+    h1, h2, h3 { color: var(--primary-red) !important; font-weight: 700 !important; }
+
+    .giris-kapsayici { border: 1px solid rgba(204, 0, 0, 0.3); border-radius: 12px; padding: 40px; text-align: center; }
+
+    .apk-buton-link { display: block; width: 100%; background-color: var(--primary-red); color: white !important; text-align: center; padding: 14px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-bottom: 20px; transition: 0.3s; }
+
+    .sidebar-indir-link { display: block; background-color: transparent; color: inherit !important; text-align: center; padding: 8px; border-radius: 6px; text-decoration: none; border: 1px solid var(--primary-red); font-size: 13px; margin-top: 10px; }
+
+    .not-alani { background-color: rgba(204, 0, 0, 0.05); color: var(--primary-red); padding: 10px; border-radius: 8px; border: 1px dashed var(--primary-red); margin-bottom: 20px; font-size: 0.85rem; text-align: center; }
+
+    .ai-rapor-alani { border-left: 4px solid var(--primary-red); padding: 20px; background-color: rgba(128,128,128,0.05); border-radius: 4px; line-height: 1.6; }
+
+    .stSpinner > div { border-top-color: #cc0000 !important; }
+
     </style>
+
 """, unsafe_allow_html=True)
 
-# --- 🧠 ZEKA FONKSİYONLARI ---
 
-def daktilo_efekti(metin):
-    """Yazıyı ekrana canlı bir şekilde döker."""
+
+# --- 💾 VERİTABANI ---
+
+def db_baslat():
+
+    conn = sqlite3.connect('turkai_v220.db', check_same_thread=False)
+
+    c = conn.cursor()
+
+    c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT)')
+
+    c.execute('CREATE TABLE IF NOT EXISTS aramalar (kullanici TEXT, konu TEXT, icerik TEXT, tarih TEXT, motor TEXT)')
+
+    conn.commit()
+
+    return conn, c
+
+conn, c = db_baslat()
+
+
+
+# --- 🔄 FONKSİYONLAR ---
+
+
+
+def yazi_efekti(text):
+
     placeholder = st.empty()
-    full_response = ""
-    for char in metin:
-        full_response += char
-        placeholder.markdown(f"<div class='rapor-alani'>{full_response}▌</div>", unsafe_allow_html=True)
-        time.sleep(0.005) # Hızlı aksiyon
-    placeholder.markdown(f"<div class='rapor-alani'>{full_response}</div>", unsafe_allow_html=True)
 
-def siteyi_oku(url):
-    """Sitenin içine girip gerçek bilgiyi ayıklar."""
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-    try:
-        r = requests.get(url, headers=headers, timeout=8)
-        soup = BeautifulSoup(r.text, 'html.parser')
-        # Gereksizleri at (reklam, menü, footer)
-        for junk in soup(['script', 'style', 'nav', 'header', 'footer', 'form', 'aside']):
-            junk.decompose()
-        
-        paragraphs = soup.find_all('p')
-        # Sadece içi dolu olanları birleştir
-        text = "\n\n".join([p.get_text().strip() for p in paragraphs if len(p.get_text()) > 60])
-        return text[:2000] # Çok uzunsa kes
-    except:
-        return None
+    full_text = ""
 
-def derin_dusunen_motor(soru):
-    """Derin Arama: 10 siteyi tek tek gezer."""
-    headers = {'User-Agent': 'Mozilla/5.0'}
-    # Sadece Türkçe siteler için arama parametresi
-    query = urllib.parse.quote(f"{soru} site:.tr OR site:.com.tr")
-    search_url = f"https://www.google.com/search?q={query}"
+    for word in text.split():
+
+        full_text += word + " "
+
+        placeholder.markdown(f"<div class='ai-rapor-alani'>{full_text}▌</div>", unsafe_allow_html=True)
+
+        time.sleep(0.02)
+
+    placeholder.markdown(f"<div class='ai-rapor-alani'>{full_text}</div>", unsafe_allow_html=True)
+
+
+
+def derin_dusunen_motor(sorgu):
+
+    """Kütüphanesiz, garantili derin arama motoru"""
+
+    durum = st.empty()
+
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'}
+
     
+
     try:
-        status = st.empty()
-        res = requests.get(search_url, headers=headers, timeout=5)
+
+        # DuckDuckGo HTML sürümünü kullanarak bot engelini aşıyoruz
+
+        search_url = f"https://html.duckduckgo.com/html/?q={urllib.parse.quote(sorgu + ' sitesi:.tr')}"
+
+        res = requests.get(search_url, headers=headers, timeout=10)
+
         soup = BeautifulSoup(res.text, 'html.parser')
+
         
-        links = []
-        for a in soup.find_all('a', href=True):
-            href = a['href']
-            if "url?q=" in href and not "google.com" in href:
-                url = href.split("url?q=")[1].split("&sa=")[0]
-                links.append(url)
+
+        # Linkleri bul
+
+        links = [a['href'] for a in soup.find_all('a', class_='result__url', href=True)][:10]
+
         
+
         if not links:
-            return fast_motor(soru) # Bulamazsa Wiki'ye kaç
 
-        found_content = ""
-        for i, link in enumerate(links[:10]): # En iyi 10 site
-            status.info(f"🔍 Şu an analiz ediliyor ({i+1}/10): {link[:50]}...")
-            content = siteyi_oku(link)
-            if content and len(content) > 150:
-                found_content = content
-                status.empty()
-                break
+            return wiki_arama(sorgu)
+
+
+
+        derin_bilgi = ""
+
+        sayac = 0
+
         
-        return found_content if found_content else fast_motor(soru)
-    except:
-        return fast_motor(soru)
 
-def fast_motor(soru):
-    """Yedek Motor: Wikipedia."""
-    try:
-        url = f"https://tr.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(soru)}"
-        data = requests.get(url, timeout=5).json()
-        return data.get('extract', "Maalesef ne derin ağda ne de Wikipedia'da bir sonuç bulamadım aga.")
-    except:
-        return "Bağlantı sorunu yaşanıyor."
+        for link in links:
 
-# --- 🖥️ ARAYÜZ ---
+            sayac += 1
 
-if "user" not in st.session_state:
-    st.session_state.user = None
-
-if not st.session_state.user:
-    st.title("🇹🇷 TürkAI Analiz Platformu")
-    col1, _ = st.columns([1, 1])
-    with col1:
-        u = st.text_input("Kullanıcı")
-        if st.button("Sisteme Giriş Yap"):
-            st.session_state.user = u if u else "Misafir"
-            st.rerun()
-    st.stop()
-
-# --- ANA PANEL ---
-st.sidebar.title(f"🛡️ {st.session_state.user}")
-motor_tipi = st.sidebar.selectbox("Analiz Modu", ["Derin Düşünen (Detaylı)", "Hızlı Motor (Özet)"])
-
-if st.sidebar.button("Çıkış"):
-    st.session_state.user = None
-    st.rerun()
-
-st.header("🔍 Araştırma Terminali")
-girdi = st.chat_input("Bir şeyler sor veya matematiksel işlem yap...")
-
-if girdi:
-    # 1. MATEMATİK KONTROLÜ (İnternete sormadan önce)
-    # Sadece sayılar ve işlem operatörleri var mı?
-    if re.match(r'^[0-9+\-*/().\s^]+$', girdi):
-        with st.spinner('Hesaplanıyor...'):
-            try:
-                sonuc = eval(girdi)
-                cevap = f"🔢 **Matematiksel İşlem Sonucu:**\n\n{girdi} = **{sonuc}**"
-            except:
-                cevap = "⚠️ Matematiksel ifadeyi çözemedim."
-    
-    # 2. ARAŞTIRMA MODU
-    else:
-        with st.spinner('TürkAI Veri Madenciliği Yapıyor...'):
-            if motor_tipi == "Hızlı Motor (Özet)":
-                cevap = fast_motor(girdi)
-            else:
-                cevap = derin_dusunen_motor(girdi)
-    
-    # Sonucu göster
-    daktilo_efekti(cevap)
-
-    if st.button("👎 Sonuç Yanlış/Alakasız"):
-        st.error("Geri bildirim alındı. Bu siteyi kara listeye alıyorum...")
+            durum.caption("🧠 TürkAI Derin Analiz Yapıyor")
