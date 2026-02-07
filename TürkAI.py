@@ -105,7 +105,7 @@ if not st.session_state.user:
         st.markdown("<div class='giris-kapsayici'><h1>TürkAI Analiz Merkezi</h1></div>", unsafe_allow_html=True)
         
         # Giriş Notu
-        st.markdown("<div class='not-alani'>Şuan betada olduğu için, çalışmalar sürdürülüyor.</div>", unsafe_allow_html=True)
+        st.markdown("<div class='not-alani'>Yaptığınız oturum sayfayı yenilediğinizde veya giriş çıkış yaptığınızda yeniden oturum açmak zorunda kalnılır şuan betada olduğu için, çalışmalar sürdürülüyor.</div>", unsafe_allow_html=True)
         
         # Giriş APK Butonu
         st.markdown(f'<a href="{APK_URL}" class="apk-buton-link">TürkAI Mobil Uygulamasını Yükle</a>', unsafe_allow_html=True)
@@ -227,3 +227,4 @@ if st.session_state.bilgi:
     pdf_v = rapor_pdf_olustur()
     if pdf_v:
         st.download_button(label="📊 Raporu Arşivle (PDF)", data=pdf_v, file_name=f"TurkAI_Rapor_{st.session_state.konu}.pdf", mime="application/pdf")
+
