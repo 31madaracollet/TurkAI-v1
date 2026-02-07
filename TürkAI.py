@@ -11,6 +11,9 @@ from fpdf import FPDF
 # --- ⚙️ SİSTEM AYARLARI ---
 st.set_page_config(page_title="TürkAI Analiz Merkezi", page_icon="🇹🇷", layout="wide")
 
+# --- 🔗 GITHUB DIREKT INDIRME LINKI ---
+APK_URL = "https://github.com/31madaracollet/TurkAI-v1/raw/refs/heads/main/4e47617eff77a24ebec8.apk"
+
 # --- 🎨 CANVA MODERN TEMASI ---
 st.markdown("""
     <style>
@@ -24,35 +27,44 @@ st.markdown("""
         box-shadow: 0px 4px 15px rgba(204, 0, 0, 0.1);
     }
 
-    .user-msg {
-        background: linear-gradient(135deg, #cc0000 0%, #ff4d4d 100%);
-        color: #ffffff !important;
-        padding: 12px 18px; border-radius: 15px 15px 0px 15px;
-        margin-bottom: 20px; width: fit-content; max-width: 70%;
-        margin-left: auto; box-shadow: 0px 4px 10px rgba(204, 0, 0, 0.2);
+    /* GitHub Buton Stilleri */
+    .apk-buton-link {
+        display: block;
+        width: 100%;
+        background-color: #cc0000;
+        color: white !important;
+        text-align: center;
+        padding: 15px;
+        border-radius: 12px;
+        text-decoration: none;
+        font-weight: bold;
+        margin-bottom: 25px;
+        transition: 0.3s;
     }
-    .user-msg * { color: #ffffff !important; }
+    .apk-buton-link:hover {
+        background-color: #a30000;
+        transform: scale(1.02);
+    }
+
+    .sidebar-apk-link {
+        display: block;
+        background-color: #000000;
+        color: white !important;
+        text-align: center;
+        padding: 10px;
+        border-radius: 8px;
+        text-decoration: none;
+        font-size: 14px;
+        border: 1px solid #cc0000;
+        margin-top: 15px;
+    }
 
     .ai-rapor-alani {
         border-left: 6px solid #cc0000; padding: 20px 25px;
         background-color: #fdfdfd; margin-bottom: 25px;
-        border-radius: 0px 15px 15px 0px; box-shadow: 2px 2px 8px rgba(0,0,0,0.02);
+        border-radius: 0px 15px 15px 0px;
     }
-
     [data-testid="stSidebar"] { background-color: #f8f9fa; border-right: 3px solid #cc0000; }
-    div.stButton > button {
-        background-color: #cc0000 !important; color: white !important;
-        border-radius: 10px !important; font-weight: bold !important;
-    }
-    .ozel-not {
-        background-color: #fff3f3; color: #cc0000; padding: 10px; 
-        border-radius: 10px; border: 1px dashed #cc0000; margin-bottom: 15px;
-        font-size: 0.85rem; text-align: center;
-    }
-    .kullanim-notu {
-        background-color: #f0f2f6; padding: 10px; border-radius: 10px;
-        border-left: 5px solid #cc0000; font-size: 0.9rem; margin-bottom: 10px;
-    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -67,14 +79,6 @@ def db_baslat():
 
 conn, c = db_baslat()
 
-# --- 🔑 APK INDIRME FONKSIYONU ---
-def apk_yukle():
-    try:
-        with open("4e47617eff77a24ebec8.apk", "rb") as f:
-            return f.read()
-    except:
-        return None
-
 # --- 🔑 GİRİŞ SİSTEMİ ---
 if "user" not in st.session_state: st.session_state.user = None
 if "bilgi" not in st.session_state: st.session_state.bilgi = None
@@ -87,18 +91,10 @@ if not st.session_state.user:
     with col2:
         st.markdown("<div class='giris-kapsayici'><h1>🇹🇷 TürkAI</h1></div>", unsafe_allow_html=True)
         
-        # --- GİRİŞTEKİ YÜKLE BUTONU ---
-        apk_dosyasi = apk_yukle()
-        if apk_dosyasi:
-            st.download_button(
-                label="📲 TürkAI Uygulamasını Yükle (Android)",
-                data=apk_dosyasi,
-                file_name="TurkAI_v1.apk",
-                mime="application/vnd.android.package-archive",
-                use_container_width=True
-            )
-            
-        st.markdown("<div class='ozel-not'>⚠️ Sayfayı yenileyince veya sayfayı kapatıp açtığınızda oturumunuz kapanır, beta aşamasındayız.</div>", unsafe_allow_html=True)
+        # --- GİRİŞ EKRANI APK BUTONU ---
+        st.markdown(f'<a href="{APK_URL}" class="apk-buton-link">📲 TürkAI Uygulamasını Yükle (Android APK)</a>', unsafe_allow_html=True)
+        
+        st.markdown("<div class='ozel-not'>⚠️ Beta sürümüdür, oturumlar geçicidir.</div>", unsafe_allow_html=True)
         t1, t2 = st.tabs(["🔐 Giriş", "📝 Kayıt"])
         with t1:
             u_in = st.text_input("Kullanıcı Adı", key="l_u")
@@ -123,31 +119,21 @@ with st.sidebar:
     if st.button("🔴 Çıkış"): st.session_state.clear(); st.rerun()
     st.divider()
     m_secim = st.radio("📡 Analiz Modu:", ["V1 (Wikipedia)", "V2 (Global - Canavar)", "V3 (Matematik)"])
-    if m_secim == "V3 (Matematik)":
-        st.markdown("<div class='ozel-not'>⚠️ <b>NOT:</b> Çarpı (x) yerine yıldız (<b>*</b>) kullan kanka.</div>", unsafe_allow_html=True)
     st.divider()
+    
+    # Geçmiş Aramalar Listesi
     c.execute("SELECT konu, icerik FROM aramalar WHERE kullanici=? ORDER BY tarih DESC LIMIT 10", (st.session_state.user,))
     for k, i in c.fetchall():
         if st.button(f"📌 {k[:20]}", key=f"h_{k}_{datetime.datetime.now().microsecond}", use_container_width=True):
             st.session_state.bilgi, st.session_state.konu, st.session_state.son_sorgu = i, k, k
             st.rerun()
     
-    # --- PANEL SONUNA YÜKLE BUTONU ---
+    # --- YAN PANEL SONUNA APK BUTONU ---
     st.divider()
-    apk_dosyasi_side = apk_yukle()
-    if apk_dosyasi_side:
-        st.download_button(
-            label="📥 Uygulamayı Yükle",
-            data=apk_dosyasi_side,
-            file_name="TurkAI_v1.apk",
-            mime="application/vnd.android.package-archive",
-            use_container_width=True
-        )
+    st.markdown(f'<a href="{APK_URL}" class="sidebar-apk-link">📥 Uygulamayı İndir</a>', unsafe_allow_html=True)
 
 # --- 💻 ÇALIŞMA ALANI ---
 st.markdown("## TürkAI Araştırma Terminali")
-st.markdown("<div class='kullanim-notu'>💡 <b>TÜYO:</b> Araştırmak istediğiniz konunun anahtar kelimesini yazınız. ❌ <i>Türk kimdir?</i> ✅ <b>Türk</b></div>", unsafe_allow_html=True)
-
 sorgu = st.chat_input("Neyi analiz edelim kanka?")
 
 if sorgu:
@@ -179,7 +165,7 @@ if sorgu:
         c.execute("INSERT INTO aramalar VALUES (?,?,?,?,?)", (st.session_state.user, st.session_state.konu, st.session_state.bilgi, str(datetime.datetime.now()), m_secim))
         conn.commit(); st.rerun()
 
-# --- 📊 GÖRÜNÜM VE PDF SİSTEMİ ---
+# --- 📊 SONUÇ VE PDF ---
 if st.session_state.son_sorgu:
     st.markdown(f"<div class='user-msg'><b>Siz:</b><br>{st.session_state.son_sorgu}</div>", unsafe_allow_html=True)
 
@@ -192,10 +178,8 @@ if st.session_state.bilgi:
             pdf = FPDF()
             pdf.add_page()
             def temizle(t):
-                if not t: return ""
                 d = {'İ':'I','ı':'i','Ş':'S','ş':'s','Ğ':'G','ğ':'g','Ü':'U','ü':'u','Ö':'O','ö':'o','Ç':'C','ç':'c'}
-                for k,v in d.items(): 
-                    t = t.replace(k,v)
+                for k,v in d.items(): t = t.replace(k,v)
                 return re.sub(r'[^\x00-\x7F]+', ' ', t)
             pdf.set_font("Arial", 'B', 16)
             pdf.cell(190, 10, txt="TurkAI Analiz Raporu", ln=True, align='C')
@@ -203,11 +187,8 @@ if st.session_state.bilgi:
             pdf.set_font("Arial", size=12)
             metin = f"Konu: {temizle(st.session_state.konu)}\n\nRapor:\n{temizle(st.session_state.bilgi)}\n\nKullanici: {temizle(st.session_state.user)}"
             pdf.multi_cell(0, 10, txt=metin)
-            cikti = pdf.output(dest='S')
-            return bytes(cikti) if not isinstance(cikti, str) else cikti.encode('latin-1', 'replace')
-        except Exception as e:
-            st.error(f"PDF Hatası: {e}")
-            return None
+            return pdf.output(dest='S').encode('latin-1', 'replace')
+        except: return None
 
     pdf_data = pdf_yap()
     if pdf_data:
