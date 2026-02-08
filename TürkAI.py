@@ -8,6 +8,7 @@ import urllib.parse
 import re 
 from fpdf import FPDF 
 import time
+import math
 
 # --- ⚙️ SİSTEM VE TEMA AYARLARI ---
 st.set_page_config(
@@ -32,23 +33,38 @@ st.markdown("""
         --light-card: #ffffff;
         --light-text: #222222;
         --border-radius: 8px;
-        --shadow-light: 0 4px 12px rgba(0,0,0,0.08);
-        --shadow-dark: 0 4px 12px rgba(0,0,0,0.2);
     }
     
     /* Tema Kontrolü */
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --bg-color: var(--dark-bg);
+            --card-color: var(--dark-card);
+            --text-color: var(--dark-text);
+            --border-color: #333;
+            --shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+    }
+    
+    @media (prefers-color-scheme: light) {
+        :root {
+            --bg-color: var(--light-bg);
+            --card-color: var(--light-card);
+            --text-color: var(--light-text);
+            --border-color: #ddd;
+            --shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+    }
+    
     .stApp {
         background-color: var(--bg-color) !important;
         color: var(--text-color) !important;
-        transition: all 0.3s ease;
     }
     
-    /* Başlıklar */
     h1, h2, h3 {
         color: var(--primary-red) !important;
         font-family: 'Georgia', 'Times New Roman', serif !important;
         font-weight: 700 !important;
-        letter-spacing: -0.5px;
     }
     
     h1 {
@@ -59,21 +75,6 @@ st.markdown("""
         text-align: center;
     }
     
-    h2 {
-        font-size: 1.8rem !important;
-        margin-top: 25px !important;
-        margin-bottom: 15px !important;
-    }
-    
-    h3 {
-        font-size: 1.4rem !important;
-        color: var(--text-color) !important;
-        border-left: 4px solid var(--primary-red);
-        padding-left: 12px;
-        margin-top: 20px !important;
-    }
-    
-    /* Giriş Ekranı */
     .login-container {
         max-width: 500px;
         margin: 80px auto;
@@ -82,21 +83,8 @@ st.markdown("""
         border-radius: var(--border-radius);
         border: 2px solid var(--primary-red);
         box-shadow: var(--shadow);
-        position: relative;
-        overflow: hidden;
     }
     
-    .login-container::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 5px;
-        background: linear-gradient(90deg, var(--primary-red), #B22222);
-    }
-    
-    /* Butonlar */
     .primary-button {
         background: linear-gradient(135deg, #8B0000, #B22222) !important;
         color: white !important;
@@ -105,13 +93,6 @@ st.markdown("""
         border-radius: var(--border-radius) !important;
         font-weight: 600 !important;
         font-size: 15px !important;
-        transition: all 0.3s ease !important;
-        box-shadow: 0 4px 6px rgba(139, 0, 0, 0.2) !important;
-    }
-    
-    .primary-button:hover {
-        transform: translateY(-2px) !important;
-        box-shadow: 0 6px 12px rgba(139, 0, 0, 0.25) !important;
     }
     
     .secondary-button {
@@ -122,14 +103,8 @@ st.markdown("""
         border-radius: var(--border-radius) !important;
         font-weight: 600 !important;
         font-size: 14px !important;
-        transition: all 0.3s ease !important;
     }
     
-    .secondary-button:hover {
-        background-color: rgba(139, 0, 0, 0.1) !important;
-    }
-    
-    /* Kartlar */
     .info-card {
         background-color: var(--card-color);
         border: 1px solid rgba(139, 0, 0, 0.2);
@@ -137,12 +112,6 @@ st.markdown("""
         padding: 25px;
         margin: 20px 0;
         box-shadow: var(--shadow);
-        transition: transform 0.3s ease;
-    }
-    
-    .info-card:hover {
-        transform: translateY(-3px);
-        border-color: var(--primary-red);
     }
     
     .site-card {
@@ -151,9 +120,6 @@ st.markdown("""
         border-radius: var(--border-radius);
         padding: 20px;
         margin: 12px 0;
-        transition: all 0.3s ease;
-        cursor: pointer;
-        position: relative;
     }
     
     .site-card.active {
@@ -161,45 +127,12 @@ st.markdown("""
         background-color: rgba(139, 0, 0, 0.05);
     }
     
-    /* İlerleme Göstergesi */
-    .progress-container {
-        background-color: var(--card-color);
-        border-radius: var(--border-radius);
-        padding: 20px;
-        margin: 25px 0;
-        border: 1px solid rgba(139, 0, 0, 0.1);
-    }
-    
-    .progress-step {
-        display: flex;
-        align-items: center;
-        margin: 15px 0;
-        padding: 10px;
-        border-radius: 6px;
-        background-color: rgba(139, 0, 0, 0.05);
-    }
-    
-    .step-number {
-        background-color: var(--primary-red);
-        color: white;
-        width: 30px;
-        height: 30px;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: bold;
-        margin-right: 15px;
-    }
-    
-    /* Spinner */
     .spinner-container {
         text-align: center;
         padding: 50px;
         background-color: var(--card-color);
         border-radius: var(--border-radius);
         margin: 30px 0;
-        border: 2px dashed rgba(139, 0, 0, 0.2);
     }
     
     .spinner {
@@ -217,7 +150,6 @@ st.markdown("""
         100% { transform: rotate(360deg); }
     }
     
-    /* Badge */
     .badge {
         display: inline-block;
         background: linear-gradient(135deg, #8B0000, #B22222);
@@ -238,7 +170,6 @@ st.markdown("""
         margin-left: 8px;
     }
     
-    /* PDF Butonu */
     .pdf-button {
         background: linear-gradient(135deg, #006400, #228B22) !important;
         color: white !important;
@@ -247,115 +178,27 @@ st.markdown("""
         border-radius: var(--border-radius) !important;
         font-weight: 600 !important;
         font-size: 14px !important;
-        transition: all 0.3s ease !important;
     }
     
-    .pdf-button:hover {
-        transform: translateY(-2px) !important;
-        box-shadow: 0 6px 12px rgba(0, 100, 0, 0.2) !important;
-    }
-    
-    /* Input Alanları */
     .stTextInput > div > div > input {
         border-radius: var(--border-radius) !important;
         border: 2px solid var(--border-color) !important;
         background-color: var(--card-color) !important;
         color: var(--text-color) !important;
         padding: 12px 15px !important;
-        font-size: 15px !important;
     }
     
-    .stTextInput > div > div > input:focus {
-        border-color: var(--primary-red) !important;
-        box-shadow: 0 0 0 2px rgba(139, 0, 0, 0.2) !important;
-    }
-    
-    /* Chat Input */
     .stChatInput > div > div > input {
         border: 2px solid var(--primary-red) !important;
         border-radius: 25px !important;
         padding: 14px 20px !important;
         background-color: var(--card-color) !important;
         color: var(--text-color) !important;
-        font-size: 15px !important;
     }
     
-    /* Radio Butonları */
-    .stRadio > div {
-        background-color: var(--card-color);
-        padding: 15px;
-        border-radius: var(--border-radius);
-        border: 1px solid var(--border-color);
-    }
-    
-    /* Sidebar */
     section[data-testid="stSidebar"] {
         background-color: var(--card-color) !important;
         border-right: 1px solid var(--border-color) !important;
-    }
-    
-    /* Tabler */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 2px;
-    }
-    
-    .stTabs [data-baseweb="tab"] {
-        background-color: var(--card-color) !important;
-        border-radius: 6px 6px 0 0 !important;
-        border: 1px solid var(--border-color) !important;
-        padding: 10px 20px !important;
-        font-weight: 500 !important;
-    }
-    
-    .stTabs [aria-selected="true"] {
-        background-color: var(--primary-red) !important;
-        color: white !important;
-        border-color: var(--primary-red) !important;
-    }
-    
-    /* Bilgi Kutuları */
-    .warning-box {
-        background-color: rgba(255, 193, 7, 0.1);
-        border-left: 4px solid #ffc107;
-        padding: 15px;
-        margin: 15px 0;
-        border-radius: 0 6px 6px 0;
-        font-size: 0.9rem;
-    }
-    
-    .success-box {
-        background-color: rgba(40, 167, 69, 0.1);
-        border-left: 4px solid #28a745;
-        padding: 15px;
-        margin: 15px 0;
-        border-radius: 0 6px 6px 0;
-        font-size: 0.9rem;
-    }
-    
-    /* Kod Blokları */
-    pre {
-        background-color: var(--card-color) !important;
-        border: 1px solid var(--border-color) !important;
-        border-radius: var(--border-radius) !important;
-        padding: 15px !important;
-        font-family: 'Consolas', monospace !important;
-        font-size: 0.9rem !important;
-    }
-    
-    /* Responsive Tasarım */
-    @media (max-width: 768px) {
-        .login-container {
-            margin: 40px 20px;
-            padding: 30px 20px;
-        }
-        
-        h1 {
-            font-size: 2rem !important;
-        }
-        
-        h2 {
-            font-size: 1.5rem !important;
-        }
     }
     </style>
 """, unsafe_allow_html=True)
@@ -373,7 +216,6 @@ conn, c = db_baslat()
 
 # --- 🔑 OTURUM YÖNETİMİ ---
 def init_session_state():
-    """Session state değişkenlerini güvenli şekilde başlat"""
     default_values = {
         "user": None,
         "is_guest": False,
@@ -384,15 +226,13 @@ def init_session_state():
         "aktif_site": 0,
         "site_sonuclari": [],
         "yap_butonu": False,
-        "site_listesi": [],
-        "mevcut_site_icerik": None
+        "site_listesi": []
     }
     
     for key, default_value in default_values.items():
         if key not in st.session_state:
             st.session_state[key] = default_value
 
-# Session state'i başlat
 init_session_state()
 
 # --- 🔧 PROFESYONEL FONKSİYONLAR ---
@@ -400,9 +240,7 @@ def profesyonel_site_tara(url, sorgu, site_adi, timeout=8):
     """Profesyonel site tarama"""
     try:
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
         
         response = requests.get(url, headers=headers, timeout=timeout)
@@ -413,16 +251,8 @@ def profesyonel_site_tara(url, sorgu, site_adi, timeout=8):
         soup = BeautifulSoup(response.content, 'html.parser')
         
         # Reklamları temizle
-        for element in soup.find_all(['script', 'style', 'iframe', 'nav', 'footer', 'header', 'aside', 'form', 'button', 'advertisement', 'banner']):
+        for element in soup.find_all(['script', 'style', 'iframe', 'nav', 'footer', 'header']):
             element.decompose()
-        
-        # Türkçe içerik kontrolü
-        tum_metin = soup.get_text().lower()
-        turkce_kelimeler = ['veya', 'ile', 'için', 'olarak', 'göre', 'kadar', 'ancak', 'fakat', 'çünkü', 'eğer']
-        turkce_puan = sum(1 for kelime in turkce_kelimeler if kelime in tum_metin)
-        
-        if turkce_puan < 2:
-            return (site_adi, None, 0)
         
         # Ana içerik alanını bul
         icerik = ""
@@ -433,9 +263,7 @@ def profesyonel_site_tara(url, sorgu, site_adi, timeout=8):
             ('div', {'class': 'content'}),
             ('article', None),
             ('div', {'class': 'article'}),
-            ('div', {'class': 'entry-content'}),
-            ('section', {'class': 'content'}),
-            ('div', {'class': re.compile(r'main|content|article|entry')})
+            ('section', {'class': 'content'})
         ]
         
         for tag, attrs in article_selectors:
@@ -444,11 +272,10 @@ def profesyonel_site_tara(url, sorgu, site_adi, timeout=8):
                 for elem in elements:
                     text = elem.get_text().strip()
                     if len(text) > 150:
-                        # Paragrafları ayır
                         paragraphs = text.split('\n\n')
                         for para in paragraphs:
                             para = para.strip()
-                            if len(para) > 80 and sorgu.lower() in para.lower():
+                            if len(para) > 80:
                                 icerik += para + "\n\n"
                         if len(icerik) > 300:
                             break
@@ -472,10 +299,7 @@ def profesyonel_site_tara(url, sorgu, site_adi, timeout=8):
             # Reklamları temizle
             temizleme_listesi = [
                 r'reklam.*', r'sponsor.*', r'kaydol.*', r'üye ol.*', r'abone ol.*',
-                r'bizi takip edin.*', r'yorum yap.*', r'paylaş.*', r'satın al.*',
-                r'indirim.*', r'kampanya.*', r'fırsat.*', r'sepete ekle.*',
-                r'©.*', r'tüm hakları saklıdır.*', r'www\..*', r'\.com.*',
-                r'cookie.*', r'çerez.*', r'gizlilik.*', r'kvkk.*'
+                r'bizi takip edin.*', r'yorum yap.*', r'paylaş.*', r'satın al.*'
             ]
             
             for pattern in temizleme_listesi:
@@ -492,8 +316,6 @@ def profesyonel_site_tara(url, sorgu, site_adi, timeout=8):
             elif len(icerik) > 100:
                 puan += 1
             
-            puan += turkce_puan
-            
             if icerik.count('.') + icerik.count(',') > 5:
                 puan += 2
             
@@ -501,7 +323,7 @@ def profesyonel_site_tara(url, sorgu, site_adi, timeout=8):
         
         return (site_adi, None, 0)
             
-    except Exception as e:
+    except:
         return (site_adi, None, 0)
 
 def birlesik_motor_arama(sorgu):
@@ -560,16 +382,83 @@ def birlesik_motor_arama(sorgu):
     turk_siteleri.sort(key=lambda x: x['oncelik'], reverse=True)
     return turk_siteleri
 
+def matematik_islemi_yap(ifade):
+    """Güvenli matematik işlemi yapar"""
+    try:
+        # Önce temel matematik işlemleri için kontrol
+        if not ifade.strip():
+            return None
+            
+        # Özel matematiksel fonksiyonlar için izin verilen karakterler
+        izinli_karakterler = set('0123456789+-*/(). ')
+        ozel_fonksiyonlar = ['sqrt', 'sin', 'cos', 'tan', 'log', 'exp', 'pi']
+        
+        # İfadeyi küçük harfe çevir
+        ifade_lower = ifade.lower()
+        
+        # Özel matematik fonksiyonlarını kontrol et
+        for fonk in ozel_fonksiyonlar:
+            if fonk in ifade_lower:
+                # Güvenli matematik ifadesi oluştur
+                if fonk == 'sqrt':
+                    # Karekök işlemi
+                    num = re.search(r'sqrt\((\d+\.?\d*)\)', ifade_lower)
+                    if num:
+                        return math.sqrt(float(num.group(1)))
+                elif fonk == 'pi':
+                    return math.pi
+                elif fonk == 'sin':
+                    num = re.search(r'sin\((\d+\.?\d*)\)', ifade_lower)
+                    if num:
+                        return math.sin(math.radians(float(num.group(1))))
+                elif fonk == 'cos':
+                    num = re.search(r'cos\((\d+\.?\d*)\)', ifade_lower)
+                    if num:
+                        return math.cos(math.radians(float(num.group(1))))
+                elif fonk == 'tan':
+                    num = re.search(r'tan\((\d+\.?\d*)\)', ifade_lower)
+                    if num:
+                        return math.tan(math.radians(float(num.group(1))))
+                elif fonk == 'log':
+                    num = re.search(r'log\((\d+\.?\d*)\)', ifade_lower)
+                    if num:
+                        return math.log10(float(num.group(1)))
+                elif fonk == 'exp':
+                    num = re.search(r'exp\((\d+\.?\d*)\)', ifade_lower)
+                    if num:
+                        return math.exp(float(num.group(1)))
+        
+        # Basit matematik işlemleri için güvenli kontrol
+        guvenli_ifade = ''
+        for char in ifade:
+            if char in izinli_karakterler:
+                guvenli_ifade += char
+        
+        if not guvenli_ifade:
+            return None
+            
+        # Matematik işlemini yap
+        result = eval(guvenli_ifade, {"__builtins__": {}}, {})
+        return result
+        
+    except Exception as e:
+        return None
+
 def profesyonel_pdf_olustur():
-    """Profesyonel PDF oluştur"""
+    """Profesyonel PDF oluştur - Türkçe karakter sorunu çözüldü"""
     try:
         pdf = FPDF()
         pdf.add_page()
         
+        # UTF-8 encoding için
+        pdf.add_font('DejaVu', '', 'DejaVuSansCondensed.ttf', uni=True)
+        pdf.add_font('DejaVu', 'B', 'DejaVuSansCondensed-Bold.ttf', uni=True)
+        pdf.add_font('DejaVu', 'I', 'DejaVuSansCondensed-Oblique.ttf', uni=True)
+        
         # Başlık
-        pdf.set_font("Arial", 'B', 18)
+        pdf.set_font('DejaVu', 'B', 18)
         pdf.set_text_color(139, 0, 0)
-        pdf.cell(190, 15, txt="TÜRKAI PROFESYONEL ANALİZ RAPORU", ln=True, align='C')
+        pdf.cell(190, 15, txt="TÜRKAI ANALİZ RAPORU", ln=True, align='C')
         pdf.ln(5)
         
         # Çizgi
@@ -578,55 +467,53 @@ def profesyonel_pdf_olustur():
         pdf.ln(10)
         
         # Konu bilgisi
-        pdf.set_font("Arial", 'B', 14)
+        pdf.set_font('DejaVu', 'B', 14)
         pdf.set_text_color(0, 0, 0)
         pdf.cell(40, 10, txt="Konu:", ln=0)
-        pdf.set_font("Arial", '', 14)
-        pdf.cell(150, 10, txt=str(st.session_state.konu)[:50], ln=True)
+        pdf.set_font('DejaVu', '', 14)
+        konu_text = str(st.session_state.konu)[:50]
+        pdf.cell(150, 10, txt=konu_text.encode('latin-1', 'replace').decode('latin-1'), ln=True)
         pdf.ln(5)
         
         # Tarih
-        pdf.set_font("Arial", 'B', 12)
+        pdf.set_font('DejaVu', 'B', 12)
         pdf.cell(40, 8, txt="Tarih:", ln=0)
-        pdf.set_font("Arial", '', 12)
+        pdf.set_font('DejaVu', '', 12)
         pdf.cell(150, 8, txt=datetime.datetime.now().strftime('%d.%m.%Y %H:%M'), ln=True)
         
         # Kullanıcı
-        pdf.set_font("Arial", 'B', 12)
+        pdf.set_font('DejaVu', 'B', 12)
         pdf.cell(40, 8, txt="Kullanıcı:", ln=0)
-        pdf.set_font("Arial", '', 12)
+        pdf.set_font('DejaVu', '', 12)
         user_text = str(st.session_state.user)
         if st.session_state.is_guest:
             user_text += " (Misafir)"
-        pdf.cell(150, 8, txt=user_text, ln=True)
+        pdf.cell(150, 8, txt=user_text.encode('latin-1', 'replace').decode('latin-1'), ln=True)
         pdf.ln(15)
         
         # İçerik başlığı
-        pdf.set_font("Arial", 'B', 16)
+        pdf.set_font('DejaVu', 'B', 16)
         pdf.set_text_color(139, 0, 0)
         pdf.cell(190, 10, txt="ANALİZ SONUÇLARI", ln=True)
         pdf.ln(5)
         
         # İçerik
-        pdf.set_font("Arial", '', 11)
+        pdf.set_font('DejaVu', '', 11)
         pdf.set_text_color(0, 0, 0)
         
         if st.session_state.bilgi:
             icerik = str(st.session_state.bilgi)
             
-            # HTML/Markdown temizleme
-            icerik = re.sub(r'#+\s*', '', icerik)
-            icerik = re.sub(r'\*\*', '', icerik)
-            icerik = re.sub(r'\*', '', icerik)
+            # Türkçe karakterleri Latin-1'e çevir
+            icerik_latin1 = icerik.encode('latin-1', 'replace').decode('latin-1')
             
-            # Türkçe karakter düzeltme
-            for eski, yeni in [('İ', 'I'), ('ı', 'i'), ('Ş', 'S'), ('ş', 's'), 
-                              ('Ğ', 'G'), ('ğ', 'g'), ('Ü', 'U'), ('ü', 'u'),
-                              ('Ö', 'O'), ('ö', 'o'), ('Ç', 'C'), ('ç', 'c')]:
-                icerik = icerik.replace(eski, yeni)
+            # HTML/Markdown temizleme
+            icerik_latin1 = re.sub(r'#+\s*', '', icerik_latin1)
+            icerik_latin1 = re.sub(r'\*\*', '', icerik_latin1)
+            icerik_latin1 = re.sub(r'\*', '', icerik_latin1)
             
             # Paragraflara ayır
-            paragraphs = icerik.split('\n\n')
+            paragraphs = icerik_latin1.split('\n\n')
             for para in paragraphs:
                 para = para.strip()
                 if para:
@@ -648,15 +535,47 @@ def profesyonel_pdf_olustur():
         
         # Alt bilgi
         pdf.ln(20)
-        pdf.set_font("Arial", 'I', 10)
+        pdf.set_font('DejaVu', 'I', 10)
         pdf.set_text_color(128, 128, 128)
         pdf.cell(190, 5, txt="TürkAI Profesyonel Araştırma Sistemi", ln=True, align='C')
-        pdf.cell(190, 5, txt="© 2024 - Tüm hakları saklıdır", ln=True, align='C')
+        pdf.cell(190, 5, txt="© 2024", ln=True, align='C')
         
         return pdf.output(dest='S').encode('latin-1')
     except Exception as e:
-        st.error(f"PDF oluşturma sırasında hata: {str(e)}")
-        return None
+        # DejaVu fontu yoksa alternatif
+        try:
+            pdf = FPDF()
+            pdf.add_page()
+            
+            # Alternatif yaklaşım - sadece ASCII karakterler
+            pdf.set_font("Arial", 'B', 16)
+            pdf.cell(190, 10, txt="TURKAI RAPORU", ln=True, align='C')
+            
+            pdf.set_font("Arial", '', 12)
+            pdf.cell(190, 10, txt=f"Konu: {st.session_state.konu[:30]}", ln=True)
+            pdf.cell(190, 10, txt=f"Tarih: {datetime.datetime.now().strftime('%d.%m.%Y')}", ln=True)
+            
+            # İçeriği ASCII karakterlere çevir
+            if st.session_state.bilgi:
+                content = str(st.session_state.bilgi)
+                # Türkçe karakterleri İngilizce karşılıklarına çevir
+                char_map = {
+                    'İ': 'I', 'ı': 'i', 'Ş': 'S', 'ş': 's', 'Ğ': 'G',
+                    'ğ': 'g', 'Ü': 'U', 'ü': 'u', 'Ö': 'O', 'ö': 'o',
+                    'Ç': 'C', 'ç': 'c'
+                }
+                
+                for tr_char, en_char in char_map.items():
+                    content = content.replace(tr_char, en_char)
+                
+                # Sadece ASCII karakterleri al
+                content_ascii = ''.join(char for char in content if ord(char) < 128)
+                
+                pdf.multi_cell(0, 6, txt=content_ascii[:500])
+            
+            return pdf.output(dest='S').encode('latin-1')
+        except:
+            return None
 
 # --- 🔐 PROFESYONEL GİRİŞ EKRANI ---
 if not st.session_state.user:
@@ -669,7 +588,7 @@ if not st.session_state.user:
         st.markdown("""
         <div style='text-align: center; margin-bottom: 40px;'>
             <h1 style='color: #8B0000; font-size: 2.8rem;'>🇹🇷 TÜRKAI</h1>
-            <p style='color: #666; font-size: 1.1rem; margin-top: -10px; font-style: italic;'>
+            <p style='color: #666; font-size: 1.1rem; margin-top: -10px;'>
                 Profesyonel Araştırma ve Analiz Sistemi
             </p>
         </div>
@@ -679,7 +598,7 @@ if not st.session_state.user:
         
         # Uyarı Mesajı
         st.markdown("""
-        <div class='warning-box'>
+        <div class='info-card' style='background-color: rgba(255, 193, 7, 0.1); border-left: 4px solid #ffc107;'>
             <b>⚠️ ÖNEMLİ UYARI:</b><br>
             Yaptığınız oturumlar geçicidir. Çıkış yaptığınızda tüm veriler silinecektir.
         </div>
@@ -700,11 +619,10 @@ if not st.session_state.user:
         st.markdown("""
         <div class='info-card'>
             <b>🔧 SİSTEM ÖZELLİKLERİ:</b><br>
-            • Birleşik Motor (Vikipedi + TDK)<br>
-            • Derin Analiz Modu<br>
+            • Birleşik Motor<br>
+            • Derin Analiz + Matematik<br>
             • Türkçe Kaynak Odaklı<br>
-            • Profesyonel PDF Rapor<br>
-            • Reklam Filtreleme
+            • Profesyonel PDF Rapor
         </div>
         """, unsafe_allow_html=True)
         
@@ -760,9 +678,8 @@ if not st.session_state.user:
         
         # Footer
         st.markdown("""
-        <div style='text-align: center; margin-top: 40px; color: #666; font-size: 0.85rem; font-style: italic;'>
+        <div style='text-align: center; margin-top: 40px; color: #666; font-size: 0.85rem;'>
             <p>TürkAI © 2024 | Tüm hakları saklıdır</p>
-            <p>Profesyonel araştırma çözümleri</p>
         </div>
         """, unsafe_allow_html=True)
     
@@ -790,11 +707,11 @@ with st.sidebar:
     
     st.divider()
     
-    # Motor Seçimi
+    # Motor Seçimi - MATEMATİK EKLENDİ
     st.markdown("### 🎯 ANALİZ MOTORU")
     m_secim = st.radio(
         "",
-        ["🚀 Birleşik Motor", "🤔 Derin Analiz"],
+        ["🚀 Birleşik Motor", "🤔 Derin Analiz + Matematik"],
         label_visibility="collapsed"
     )
     
@@ -808,13 +725,13 @@ with st.sidebar:
         • Özet bilgi
         </div>
         """, unsafe_allow_html=True)
-    elif m_secim == "🤔 Derin Analiz":
+    elif m_secim == "🤔 Derin Analiz + Matematik":
         st.markdown("""
         <div class='info-card' style='margin-top: 10px; font-size: 0.9rem; padding: 15px;'>
-        <b>DERİN ANALİZ</b><br>
+        <b>DERİN ANALİZ + MATEMATİK</b><br>
         • 8 Türkçe site<br>
-        • Site site ilerleme<br>
-        • Detaylı tarama
+        • Matematik işlemleri<br>
+        • Site site ilerleme
         </div>
         """, unsafe_allow_html=True)
     
@@ -863,13 +780,13 @@ st.markdown("""
         Araştırmak istediğin konunun anahtar kelimesini yazınız.
     </p>
     <p style='font-size: 0.9rem; margin: 5px 0 0 0; color: var(--text-color); opacity: 0.8;'>
-        Örnek: "Atatürk", "İstanbul", "Yapay Zeka"
+        Örnek: "Atatürk", "İstanbul", "45*2+18/3", "sqrt(16)"
     </p>
 </div>
 """, unsafe_allow_html=True)
 
 # Arama Çubuğu
-sorgu = st.chat_input("🔎 Anahtar kelimeyi buraya yazın...")
+sorgu = st.chat_input("🔎 Anahtar kelime veya matematik ifadesi yazın...")
 
 if sorgu and sorgu.strip():
     sorgu = sorgu.strip()
@@ -878,109 +795,125 @@ if sorgu and sorgu.strip():
     st.session_state.aktif_site = 0
     st.session_state.site_sonuclari = []
     st.session_state.yap_butonu = False
-    st.session_state.mevcut_site_icerik = None
     
-    # Düşünme Animasyonu
-    with st.spinner(""):
-        thinking_placeholder = st.empty()
-        thinking_placeholder.markdown(f"""
-        <div class='spinner-container'>
-            <div class='spinner'></div>
-            <h3 style='color: #8B0000;'>TÜRKAI ANALİZ EDİYOR</h3>
-            <p>"{sorgu}" için araştırma yapılıyor...</p>
-            <p style='color: #888; font-size: 0.9rem; font-style: italic;'>Lütfen bekleyiniz</p>
-        </div>
-        """, unsafe_allow_html=True)
+    # Matematik kontrolü
+    matematik_sonucu = matematik_islemi_yap(sorgu)
+    
+    if matematik_sonucu is not None:
+        # Matematik işlemi bulundu
+        st.session_state.bilgi = f"# 🧮 MATEMATİKSEL İŞLEM SONUCU\n\n"
+        st.session_state.bilgi += f"**İfade:** {sorgu}\n\n"
+        st.session_state.bilgi += f"**Sonuç:** **{matematik_sonucu}**\n\n"
         
-        time.sleep(1.2)
+        # Ek matematiksel açıklamalar
+        if isinstance(matematik_sonucu, (int, float)):
+            st.session_state.bilgi += f"**Detaylar:**\n"
+            st.session_state.bilgi += f"• Yaklaşık değer: {matematik_sonucu:.4f}\n"
+            
+            if matematik_sonucu >= 0:
+                st.session_state.bilgi += f"• Karekök: {math.sqrt(matematik_sonucu):.4f}\n"
+                st.session_state.bilgi += f"• Karesi: {matematik_sonucu**2:.4f}\n"
+            
+        st.session_state.konu = f"MATEMATİK: {sorgu}"
+        st.session_state.arama_devam = False
         
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-        
-        if m_secim == "🚀 Birleşik Motor":
-            try:
-                # Vikipedi'den başla
-                wiki_icerik = ""
+    else:
+        # Normal arama yap
+        with st.spinner(""):
+            thinking_placeholder = st.empty()
+            thinking_placeholder.markdown(f"""
+            <div class='spinner-container'>
+                <div class='spinner'></div>
+                <h3 style='color: #8B0000;'>TÜRKAI ANALİZ EDİYOR</h3>
+                <p>"{sorgu}" için araştırma yapılıyor...</p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            time.sleep(1)
+            
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            }
+            
+            if m_secim == "🚀 Birleşik Motor":
                 try:
-                    wiki_api = f"https://tr.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(sorgu)}"
-                    wiki_res = requests.get(wiki_api, headers=headers, timeout=8)
-                    if wiki_res.status_code == 200:
-                        wiki_data = wiki_res.json()
-                        wiki_icerik = wiki_data.get('extract', '')
-                except:
-                    wiki_icerik = ''
-                
-                # TDK'yı dene
-                tdk_icerik = ""
-                try:
-                    tdk_url = f'https://www.tdk.gov.tr/ara?k={urllib.parse.quote(sorgu)}'
-                    tdk_response = requests.get(tdk_url, headers=headers, timeout=8)
+                    # Vikipedi'den başla
+                    wiki_icerik = ""
+                    try:
+                        wiki_api = f"https://tr.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(sorgu)}"
+                        wiki_res = requests.get(wiki_api, headers=headers, timeout=8)
+                        if wiki_res.status_code == 200:
+                            wiki_data = wiki_res.json()
+                            wiki_icerik = wiki_data.get('extract', '')
+                    except:
+                        wiki_icerik = ''
                     
-                    if tdk_response.status_code == 200:
-                        tdk_soup = BeautifulSoup(tdk_response.content, 'html.parser')
-                        
-                        for element in tdk_soup.find_all(['script', 'style', 'iframe']):
-                            element.decompose()
-                        
-                        for div in tdk_soup.find_all('div', class_=re.compile(r'(anlam|tanim|aciklama)')):
-                            text = div.get_text().strip()
-                            if len(text) > 50:
-                                tdk_icerik += text + "\n\n"
-                except:
+                    # TDK'yı dene
                     tdk_icerik = ""
-                
-                # Birleştirilmiş rapor
-                rapor = f"# 📊 BİRLEŞİK ANALİZ: {sorgu.upper()}\n\n"
-                
-                if wiki_icerik:
-                    rapor += f"## 📚 Vikipedi\n{wiki_icerik}\n\n"
-                
-                if tdk_icerik and len(tdk_icerik) > 50:
-                    rapor += f"## 📖 TDK Sözlük\n{tdk_icerik[:600]}...\n\n"
-                
-                if not wiki_icerik and (not tdk_icerik or len(tdk_icerik) < 50):
-                    rapor = f"# ⚠️ SONUÇ BULUNAMADI\n\n'{sorgu}' için Türkçe kaynaklarda yeterli bilgi bulunamadı.\n\n**Öneri:** Daha genel bir terim deneyin veya Derin Analiz modunu kullanın."
-                
-                st.session_state.bilgi = rapor
-                st.session_state.konu = sorgu
-                
-            except Exception as e:
-                st.session_state.bilgi = f"# ⚠️ TEKNİK HATA\n\nArama sırasında bir hata oluştu.\n\nLütfen daha sonra tekrar deneyin."
-                st.session_state.konu = sorgu
-        
-        elif m_secim == "🤔 Derin Analiz":
-            thinking_placeholder.empty()
-            
-            # Site listesini al ve ilk siteyi tara
-            siteler = birlesik_motor_arama(sorgu)
-            st.session_state.site_listesi = siteler
-            
-            if siteler:
-                # İlk siteyi tarayıp göster
-                site = siteler[0]
-                site_adi, icerik, puan = profesyonel_site_tara(site['url'], sorgu, site['adi'])
-                
-                if icerik and puan > 2:
-                    st.session_state.mevcut_site_icerik = icerik
-                    st.session_state.aktif_site = 1  # Bir sonraki site için hazır
+                    try:
+                        tdk_url = f'https://www.tdk.gov.tr/ara?k={urllib.parse.quote(sorgu)}'
+                        tdk_response = requests.get(tdk_url, headers=headers, timeout=8)
+                        
+                        if tdk_response.status_code == 200:
+                            tdk_soup = BeautifulSoup(tdk_response.content, 'html.parser')
+                            
+                            for div in tdk_soup.find_all('div', class_=re.compile(r'(anlam|tanim|aciklama)')):
+                                text = div.get_text().strip()
+                                if len(text) > 50:
+                                    tdk_icerik += text + "\n\n"
+                    except:
+                        tdk_icerik = ""
                     
-                    # Anlık bilgi gösterimi
-                    rapor = f"# 🔍 İLK BULUNAN SİTE\n\n"
-                    rapor += f"## {site_adi}\n"
-                    rapor += f"*Kalite puanı: {puan}/10*\n\n"
-                    rapor += f"{icerik}\n\n"
-                    rapor += "---\n\n"
-                    rapor += "**📌 Not:** 'YENİDEN YAP' butonuna tıklayarak bir sonraki siteye geçebilirsiniz."
+                    # Birleştirilmiş rapor
+                    rapor = f"# 📊 BİRLEŞİK ANALİZ: {sorgu.upper()}\n\n"
+                    
+                    if wiki_icerik:
+                        rapor += f"## 📚 Vikipedi\n{wiki_icerik}\n\n"
+                    
+                    if tdk_icerik and len(tdk_icerik) > 50:
+                        rapor += f"## 📖 TDK Sözlük\n{tdk_icerik[:600]}...\n\n"
+                    
+                    if not wiki_icerik and (not tdk_icerik or len(tdk_icerik) < 50):
+                        rapor = f"# ⚠️ SONUÇ BULUNAMADI\n\n'{sorgu}' için Türkçe kaynaklarda yeterli bilgi bulunamadı."
                     
                     st.session_state.bilgi = rapor
-                    st.session_state.konu = f"DERİN: {sorgu}"
-                    st.session_state.yap_butonu = True
-                    
-                else:
-                    st.session_state.bilgi = f"# ⚠️ İLK SİTEDE BİLGİ BULUNAMADI\n\nİlk sitede yeterli bilgi bulunamadı. 'YENİDEN YAP' butonuyla bir sonraki siteye geçebilirsiniz."
                     st.session_state.konu = sorgu
-                    st.session_state.yap_butonu = True
+                    
+                except Exception as e:
+                    st.session_state.bilgi = f"# ⚠️ TEKNİK HATA\n\nArama sırasında bir hata oluştu."
+                    st.session_state.konu = sorgu
+            
+            elif m_secim == "🤔 Derin Analiz + Matematik":
+                thinking_placeholder.empty()
+                
+                # Site listesini al ve ilk siteyi tara
+                siteler = birlesik_motor_arama(sorgu)
+                st.session_state.site_listesi = siteler
+                
+                if siteler:
+                    # İlk siteyi tarayıp göster
+                    site = siteler[0]
+                    site_adi, icerik, puan = profesyonel_site_tara(site['url'], sorgu, site['adi'])
+                    
+                    if icerik and puan > 2:
+                        st.session_state.aktif_site = 1
+                        
+                        # Anlık bilgi gösterimi
+                        rapor = f"# 🔍 İLK BULUNAN SİTE\n\n"
+                        rapor += f"## {site_adi}\n"
+                        rapor += f"*Kalite puanı: {puan}/10*\n\n"
+                        rapor += f"{icerik}\n\n"
+                        rapor += "---\n\n"
+                        rapor += "**📌 Not:** 'YENİDEN YAP' butonuna tıklayarak bir sonraki siteye geçebilirsiniz."
+                        
+                        st.session_state.bilgi = rapor
+                        st.session_state.konu = f"DERİN: {sorgu}"
+                        st.session_state.yap_butonu = True
+                        
+                    else:
+                        st.session_state.bilgi = f"# ⚠️ İLK SİTEDE BİLGİ BULUNAMADI\n\n'YENİDEN YAP' butonuyla bir sonraki siteye geçebilirsiniz."
+                        st.session_state.konu = sorgu
+                        st.session_state.yap_butonu = True
     
     st.session_state.arama_devam = False
     
@@ -997,19 +930,19 @@ if sorgu and sorgu.strip():
     st.rerun()
 
 # --- 🤔 DERİN ANALİZ MODU SİTE GEÇİŞİ ---
-if m_secim == "🤔 Derin Analiz" and st.session_state.yap_butonu and st.session_state.site_listesi:
+if m_secim == "🤔 Derin Analiz + Matematik" and st.session_state.yap_butonu and st.session_state.site_listesi:
     st.markdown("---")
     st.markdown("### 🏗️ SİTE GEÇİŞ SİSTEMİ")
     
     col1, col2 = st.columns([3, 1])
     
     with col1:
-        st.markdown("""
-        <div class='progress-container'>
-            <p><b>Geçerli Durum:</b> {}/{} site taranmıştır.</p>
+        st.markdown(f"""
+        <div class='info-card'>
+            <p><b>Geçerli Durum:</b> {st.session_state.aktif_site}/{len(st.session_state.site_listesi)} site taranmıştır.</p>
             <p><b>Yapılacak İşlem:</b> Butona tıklayarak bir sonraki siteye geçebilirsiniz.</p>
         </div>
-        """.format(st.session_state.aktif_site, len(st.session_state.site_listesi)), unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
     
     with col2:
         if st.button("🔄 YENİDEN YAP", use_container_width=True, type="primary"):
@@ -1108,26 +1041,20 @@ if m_secim == "🤔 Derin Analiz" and st.session_state.yap_butonu and st.session
 if st.session_state.son_sorgu and not st.session_state.arama_devam and st.session_state.bilgi:
     # Aktif Sorgu Bilgisi
     st.markdown("---")
-    st.markdown("""
+    st.markdown(f"""
     <div class='info-card'>
         <div style='display: flex; justify-content: space-between; align-items: center;'>
             <div>
-                <strong style='color: #8B0000;'>🔍 AKTİF SORGUNUZ:</strong> {sorgu}<br>
-                <strong style='color: #8B0000;'>🎯 MOD:</strong> {motor}<br>
-                <strong style='color: #8B0000;'>👤 KULLANICI:</strong> {kullanici}{misafir}
+                <strong style='color: #8B0000;'>🔍 AKTİF SORGUNUZ:</strong> {st.session_state.son_sorgu}<br>
+                <strong style='color: #8B0000;'>🎯 MOD:</strong> {m_secim}<br>
+                <strong style='color: #8B0000;'>👤 KULLANICI:</strong> {st.session_state.user}{" (Misafir)" if st.session_state.is_guest else ""}
             </div>
             <div style='text-align: right; color: #666; font-size: 0.9rem;'>
-                {tarih}
+                {datetime.datetime.now().strftime('%d.%m.%Y %H:%M')}
             </div>
         </div>
     </div>
-    """.format(
-        sorgu=st.session_state.son_sorgu,
-        motor=m_secim,
-        kullanici=st.session_state.user,
-        misafir=" (Misafir)" if st.session_state.is_guest else "",
-        tarih=datetime.datetime.now().strftime('%d.%m.%Y %H:%M')
-    ), unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
     
     # Rapor Gösterimi
     st.markdown("### 📄 ANALİZ RAPORU")
@@ -1139,20 +1066,22 @@ if st.session_state.son_sorgu and not st.session_state.arama_devam and st.sessio
     
     with col2:
         if st.button("📥 PDF RAPOR İNDİR", use_container_width=True, type="primary"):
-            pdf_data = profesyonel_pdf_olustur()
-            if pdf_data:
-                st.download_button(
-                    label="⬇️ PDF'Yİ İNDİR",
-                    data=pdf_data,
-                    file_name=f"TurkAI_Raporu_{str(st.session_state.konu)[:25].replace(' ', '_')}.pdf",
-                    mime="application/pdf",
-                    use_container_width=True,
-                    type="primary"
-                )
-            else:
-                st.error("PDF oluşturulamadı. Lütfen tekrar deneyin.")
+            with st.spinner("PDF oluşturuluyor..."):
+                pdf_data = profesyonel_pdf_olustur()
+                if pdf_data:
+                    # PDF İndirme butonu
+                    st.download_button(
+                        label="⬇️ PDF'Yİ İNDİR",
+                        data=pdf_data,
+                        file_name=f"TurkAI_Raporu_{str(st.session_state.konu)[:25].replace(' ', '_')}.pdf",
+                        mime="application/pdf",
+                        use_container_width=True,
+                        type="primary"
+                    )
+                else:
+                    st.error("PDF oluşturulamadı. Lütfen daha basit bir raporla tekrar deneyin.")
     
-    # Ek Butonlar
+    # Ek Butonlar - KOPYALAMA DÜZELTİLDİ
     st.markdown("---")
     col1, col2, col3 = st.columns(3)
     
@@ -1165,8 +1094,27 @@ if st.session_state.son_sorgu and not st.session_state.arama_devam and st.sessio
             st.rerun()
     
     with col2:
-        if st.button("📋 KOPYALA", use_container_width=True, type="secondary"):
-            st.info("Rapor panoya kopyalandı")
+        # Panoya kopyalama düzeltildi
+        if st.button("📋 PANOYA KOPYALA", use_container_width=True, type="secondary"):
+            try:
+                # Raporu kopyalanabilir formata getir
+                kopya_metni = f"TürkAI Raporu - {st.session_state.konu}\n"
+                kopya_metni += f"Tarih: {datetime.datetime.now().strftime('%d.%m.%Y %H:%M')}\n"
+                kopya_metni += "=" * 50 + "\n\n"
+                
+                # HTML/Markdown temizleme
+                temiz_metin = st.session_state.bilgi
+                temiz_metin = re.sub(r'#+\s*', '', temiz_metin)
+                temiz_metin = re.sub(r'\*\*(.*?)\*\*', r'\1', temiz_metin)
+                temiz_metin = re.sub(r'\*', '', temiz_metin)
+                
+                kopya_metni += temiz_metin
+                
+                # Streamlit'in built-in kopyalama özelliği
+                st.code(kopya_metni[:1000] + ("..." if len(kopya_metni) > 1000 else ""), language='text')
+                st.info("Rapor kopyalanabilir formatta gösterildi. Metni seçip Ctrl+C ile kopyalayabilirsiniz.")
+            except:
+                st.warning("Kopyalama sırasında bir hata oluştu.")
     
     with col3:
         if st.button("💾 KAYDET", use_container_width=True, type="secondary", disabled=st.session_state.is_guest):
