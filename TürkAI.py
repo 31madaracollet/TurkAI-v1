@@ -241,23 +241,6 @@ st.markdown("""
         background-color: var(--card-color) !important;
         color: var(--text-color) !important;
     }
-    
-    /* Tab Stilleri */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 10px;
-    }
-    
-    .stTabs [data-baseweb="tab"] {
-        background-color: var(--card-color) !important;
-        border-radius: 8px 8px 0 0 !important;
-        border: 1px solid var(--border-color) !important;
-        padding: 10px 20px !important;
-    }
-    
-    .stTabs [aria-selected="true"] {
-        background-color: var(--primary-red) !important;
-        color: white !important;
-    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -272,26 +255,49 @@ def db_baslat():
 
 conn, c = db_baslat()
 
-# --- 🔑 OTURUM YÖNETİMİ ---
-if "user" not in st.session_state: 
-    st.session_state.user = None
-    st.session_state.is_guest = False
-if "bilgi" not in st.session_state: st.session_state.bilgi = None
-if "konu" not in st.session_state: st.session_state.konu = ""
-if "son_sorgu" not in st.session_state: st.session_state.son_sorgu = None
-if "arama_devam" not in st.session_state: st.session_state.arama_devam = False
-if "aktif_site" not in st.session_state: st.session_state.aktif_site = 0
-if "site_sonuclari" not in st.session_state: st.session_state.site_sonuclari = []
-if "yap_butonu" not in st.session_state: st.session_state.yap_butonu = False
+# --- 🔑 OTURUM YÖNETİMİ (HATA DÜZELTMESİ İÇİN) ---
+# Session state değişkenlerini güvenli şekilde başlat
+def init_session_state():
+    if "user" not in st.session_state: 
+        st.session_state.user = None
+    if "is_guest" not in st.session_state:
+        st.session_state.is_guest = False
+    if "bilgi" not in st.session_state: 
+        st.session_state.bilgi = None
+    if "konu" not in st.session_state: 
+        st.session_state.konu = ""
+    if "son_sorgu" not in st.session_state: 
+        st.session_state.son_sorgu = None
+    if "arama_devam" not in st.session_state: 
+        st.session_state.arama_devam = False
+    if "aktif_site" not in st.session_state: 
+        st.session_state.aktif_site = 0
+    if "site_sonuclari" not in st.session_state: 
+        st.session_state.site_sonuclari = []
+    if "yap_butonu" not in st.session_state: 
+        st.session_state.yap_butonu = False
+    if "site_listesi" not in st.session_state:
+        st.session_state.site_listesi = []
+
+# Session state'i başlat
+init_session_state()
 
 # --- 🔧 PROFESYONEL FONKSİYONLAR ---
 def profesyonel_site_tara(url, sorgu, site_adi, timeout=8):
-    """Profesyonel site tarama - sadece Türkçe kaynaklar"""
+    """Profesyonel site tarama - Brave reklam engelleme ile"""
     try:
+        # Brave browser gibi davranan headers
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Accept-Language': 'tr-TR,tr;q=0.9',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Cache-Control': 'max-age=0'
         }
         
         response = requests.get(url, headers=headers, timeout=timeout)
@@ -310,52 +316,70 @@ def profesyonel_site_tara(url, sorgu, site_adi, timeout=8):
         if turkce_puan < 2:  # Yeterli Türkçe içerik yoksa
             return (site_adi, None, 0)
         
+        # Reklam ve gereksiz elementleri temizle
+        for element in soup.find_all(['script', 'style', 'iframe', 'nav', 'footer', 'header', 'aside', 'form', 'button']):
+            element.decompose()
+        
         # Ana içerik alanını bul
         icerik = ""
         
         # 1. Önce makale/ansiklopedi formatını ara
         article_selectors = [
-            ('div', re.compile(r'(makale|icerik|ansiklopedi|bilgi|content|article|entry)')),
+            ('div', {'id': 'content'}),
+            ('div', {'class': 'content'}),
             ('article', None),
-            ('section', re.compile(r'(content|main|body|article)')),
-            ('div', {'id': re.compile(r'(content|main|article|body)')}),
-            ('div', {'class': re.compile(r'(content|main|article|entry|post)')})
+            ('div', {'class': 'article'}),
+            ('div', {'class': 'entry-content'}),
+            ('div', {'class': 'post-content'}),
+            ('section', {'class': 'content'}),
+            ('div', {'class': re.compile(r'main|content|article|entry')}),
+            ('div', {'id': re.compile(r'main|article|body')})
         ]
         
-        for tag, selector in article_selectors:
-            elements = soup.find_all(tag, selector) if selector else soup.find_all(tag)
-            for elem in elements:
-                text = elem.get_text().strip()
-                if len(text) > 150 and sorgu.lower() in text.lower():
-                    # Paragrafları ayır ve filtrele
-                    paragraphs = text.split('\n\n')
-                    for para in paragraphs:
-                        para = para.strip()
-                        if len(para) > 80 and sorgu.lower() in para.lower():
-                            icerik += para + "\n\n"
-                    if len(icerik) > 400:  # Yeterli içerik
-                        break
-            if len(icerik) > 400:
-                break
+        for tag, attrs in article_selectors:
+            try:
+                if attrs:
+                    elements = soup.find_all(tag, attrs)
+                else:
+                    elements = soup.find_all(tag)
+                    
+                for elem in elements:
+                    text = elem.get_text().strip()
+                    if len(text) > 150 and sorgu.lower() in text.lower():
+                        # Paragrafları ayır ve filtrele
+                        paragraphs = text.split('\n\n')
+                        for para in paragraphs:
+                            para = para.strip()
+                            if len(para) > 80:
+                                icerik += para + "\n\n"
+                        if len(icerik) > 400:  # Yeterli içerik
+                            break
+                if len(icerik) > 400:
+                    break
+            except:
+                continue
         
         # 2. Eğer hala yeterli değilse, tüm sayfadan paragraf ara
         if len(icerik) < 300:
             paragraphs = soup.find_all('p')
             for p in paragraphs:
                 text = p.get_text().strip()
-                if len(text) > 60 and sorgu.lower() in text.lower():
+                if len(text) > 60:
                     icerik += text + "\n\n"
                     if len(icerik) > 400:
                         break
         
         # İçerik temizleme
         if icerik:
-            # Reklam ve gereksiz ifadeleri temizle
+            # Reklam ve gereksiz ifadeleri temizle (Brave gibi)
             temizleme_listesi = [
                 r'reklam.*', r'sponsor.*', r'kaydol.*', r'üye ol.*', r'abone ol.*',
                 r'bizi takip edin.*', r'yorum yap.*', r'paylaş.*', r'satın al.*',
                 r'indirim.*', r'kampanya.*', r'fırsat.*', r'sepete ekle.*',
-                r'©.*', r'tüm hakları saklıdır.*', r'www\..*', r'\.com.*'
+                r'©.*', r'tüm hakları saklıdır.*', r'www\..*', r'\.com.*',
+                r'cookie.*', r'çerez.*', r'gizlilik.*', r'kvkk.*',
+                r'facebook.*', r'twitter.*', r'instagram.*', r'youtube.*',
+                r'bu web sitesi.*', r'sitemizi.*', r'ziyaretçi.*'
             ]
             
             for pattern in temizleme_listesi:
@@ -481,7 +505,7 @@ def profesyonel_pdf_olustur():
         pdf.set_text_color(0, 0, 0)
         pdf.cell(40, 10, txt="Konu:", ln=0)
         pdf.set_font("Arial", '', 14)
-        pdf.cell(150, 10, txt=st.session_state.konu[:50], ln=True)
+        pdf.cell(150, 10, txt=str(st.session_state.konu)[:50], ln=True)
         pdf.ln(5)
         
         # Tarih
@@ -494,8 +518,8 @@ def profesyonel_pdf_olustur():
         pdf.set_font("Arial", 'B', 12)
         pdf.cell(40, 8, txt="Kullanıcı:", ln=0)
         pdf.set_font("Arial", '', 12)
-        user_text = st.session_state.user
-        if st.session_state.is_guest:
+        user_text = str(st.session_state.user)
+        if st.session_state.get('is_guest', False):
             user_text += " (Misafir)"
         pdf.cell(150, 8, txt=user_text, ln=True)
         pdf.ln(15)
@@ -511,7 +535,7 @@ def profesyonel_pdf_olustur():
         pdf.set_text_color(0, 0, 0)
         
         # İçeriği paragraflara ayır
-        icerik = st.session_state.bilgi
+        icerik = str(st.session_state.bilgi) if st.session_state.bilgi else ""
         
         # HTML/Markdown temizleme
         icerik = re.sub(r'#+\s*', '', icerik)
@@ -590,6 +614,7 @@ if not st.session_state.user:
         st.markdown("""
         <div class='info-box'>
             <b>🌟 SİSTEM ÖZELLİKLERİ:</b><br>
+            • Brave gibi reklam engelleme<br>
             • Birleşik Motor (V1+V2)<br>
             • Derin Düşünen Modu<br>
             • Türkçe Kaynak Odaklı<br>
@@ -660,8 +685,8 @@ if not st.session_state.user:
 # --- 🚀 PROFESYONEL SIDEBAR ---
 with st.sidebar:
     # Kullanıcı Bilgisi
-    user_display = st.session_state.user
-    if st.session_state.is_guest:
+    user_display = str(st.session_state.user)
+    if st.session_state.get('is_guest', False):
         user_display += " <span class='guest-badge'>Misafir</span>"
     
     st.markdown(f"""
@@ -693,7 +718,7 @@ with st.sidebar:
         <div class='info-box' style='margin-top: 10px; font-size: 0.9rem;'>
         <b>BİRLEŞİK MOTOR:</b><br>
         • Vikipedi + TDK<br>
-        • Türkçe odaklı<br>
+        • Brave gibi reklam engelleme<br>
         • Hızlı arama
         </div>
         """, unsafe_allow_html=True)
@@ -702,6 +727,7 @@ with st.sidebar:
         <div class='info-box' style='margin-top: 10px; font-size: 0.9rem;'>
         <b>DERİN DÜŞÜNEN:</b><br>
         • 10 Türkçe site<br>
+        • Brave reklam engelleme<br>
         • Site site ilerleme<br>
         • Detaylı analiz
         </div>
@@ -711,25 +737,29 @@ with st.sidebar:
     
     # Geçmiş Aramalar
     st.markdown("### 📋 GEÇMİŞ ARAMALAR")
-    if not st.session_state.is_guest:
+    if not st.session_state.get('is_guest', False):
         c.execute("SELECT konu FROM aramalar WHERE kullanici=? ORDER BY tarih DESC LIMIT 6", (st.session_state.user,))
-        for (konu,) in c.fetchall():
-            if st.button(f"🔍 {konu[:25]}", key=f"h_{konu}", use_container_width=True, type="secondary"):
-                c.execute("SELECT icerik FROM aramalar WHERE kullanici=? AND konu=? ORDER BY tarih DESC LIMIT 1", 
-                         (st.session_state.user, konu))
-                result = c.fetchone()
-                if result:
-                    st.session_state.bilgi = result[0]
-                    st.session_state.konu = konu
-                    st.session_state.son_sorgu = konu
-                    st.rerun()
+        results = c.fetchall()
+        if results:
+            for (konu,) in results:
+                if st.button(f"🔍 {konu[:25] if konu else '...'}", key=f"h_{konu}", use_container_width=True, type="secondary"):
+                    c.execute("SELECT icerik FROM aramalar WHERE kullanici=? AND konu=? ORDER BY tarih DESC LIMIT 1", 
+                             (st.session_state.user, konu))
+                    result = c.fetchone()
+                    if result:
+                        st.session_state.bilgi = result[0]
+                        st.session_state.konu = konu
+                        st.session_state.son_sorgu = konu
+                        st.rerun()
+        else:
+            st.info("Henüz arama geçmişi yok")
     else:
         st.info("Misafir modunda geçmiş kaydedilmez")
     
     st.divider()
     
     # APK İndirme
-    st.markdown(f'<a href="{APK_URL}" style="text-decoration: none;">', unsafe_allow_html=True)
+    st.markdown(f'<a href="{APK_URL}" target="_blank" style="text-decoration: none;">', unsafe_allow_html=True)
     if st.button("📲 MOBİL UYGULAMA İNDİR", use_container_width=True, type="primary"):
         pass
     st.markdown('</a>', unsafe_allow_html=True)
@@ -738,7 +768,7 @@ with st.sidebar:
 st.markdown("""
 <div style='text-align: center; margin-bottom: 30px;'>
     <h1>🔍 PROFESYONEL ARAŞTIRMA TERMİNALİ</h1>
-    <p style='color: #666; font-size: 1.1rem;'>Türkçe kaynaklarla derin analiz</p>
+    <p style='color: #666; font-size: 1.1rem;'>Brave gibi reklam engelleme ile Türkçe analiz</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -746,6 +776,7 @@ st.markdown("""
 st.markdown("""
 <div class='info-box'>
 <strong>📋 PROFESYONEL KULLANIM:</strong><br>
+• <strong>Brave Browser</strong> gibi reklam engelleme aktif<br>
 1. Araştırma teriminizi yazın (örn: "Atatürk")<br>
 2. Motor seçiminizi yapın<br>
 3. Derin analiz için site site ilerleyin<br>
@@ -756,7 +787,8 @@ st.markdown("""
 # Arama Çubuğu
 sorgu = st.chat_input("🔎 Araştırmak istediğiniz terimi yazın...")
 
-if sorgu:
+if sorgu and sorgu.strip():
+    sorgu = sorgu.strip()
     st.session_state.son_sorgu = sorgu
     st.session_state.arama_devam = True
     st.session_state.aktif_site = 0
@@ -771,40 +803,55 @@ if sorgu:
             <div class='spinner'></div>
             <h3 style='color: #b22222;'>TÜRKAI ANALİZ EDİYOR</h3>
             <p>"{sorgu}" için Türkçe kaynaklar taranıyor...</p>
-            <p style='color: #888; font-size: 0.9rem;'>Lütfen bekleyiniz</p>
+            <p style='color: #888; font-size: 0.9rem;'>Brave reklam engelleme aktif</p>
         </div>
         """, unsafe_allow_html=True)
         
         time.sleep(1.5)
         
-        headers = {'User-Agent': 'Mozilla/5.0'}
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
         
         if m_secim == "🚀 Birleşik Motor (V1+V2)":
             try:
                 # Vikipedi'den başla (V1)
+                wiki_icerik = ""
                 try:
                     wiki_api = f"https://tr.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(sorgu)}"
-                    wiki_res = requests.get(wiki_api, headers=headers, timeout=10).json()
-                    wiki_icerik = wiki_res.get('extract', '')
+                    wiki_res = requests.get(wiki_api, headers=headers, timeout=10)
+                    if wiki_res.status_code == 200:
+                        wiki_data = wiki_res.json()
+                        wiki_icerik = wiki_data.get('extract', '')
                 except:
                     wiki_icerik = ''
                 
                 # TDK'yı dene (V2)
+                tdk_icerik = ""
                 try:
                     tdk_url = f'https://www.tdk.gov.tr/ara?k={urllib.parse.quote(sorgu)}'
                     tdk_response = requests.get(tdk_url, headers=headers, timeout=10)
-                    tdk_soup = BeautifulSoup(tdk_response.content, 'html.parser')
                     
-                    tdk_icerik = ""
-                    for div in tdk_soup.find_all('div', class_=re.compile(r'(anlam|tanim|aciklama)')):
-                        text = div.get_text().strip()
-                        if len(text) > 50 and sorgu.lower() in text.lower():
-                            tdk_icerik += text + "\n\n"
-                    
-                    if len(tdk_icerik) < 100:
-                        tdk_icerik = "TDK'da detaylı bilgi bulunamadı."
+                    if tdk_response.status_code == 200:
+                        tdk_soup = BeautifulSoup(tdk_response.content, 'html.parser')
+                        
+                        # Reklamları temizle
+                        for element in tdk_soup.find_all(['script', 'style', 'iframe', 'nav', 'footer']):
+                            element.decompose()
+                        
+                        for div in tdk_soup.find_all('div', class_=re.compile(r'(anlam|tanim|aciklama|meaning)')):
+                            text = div.get_text().strip()
+                            if len(text) > 50 and sorgu.lower() in text.lower():
+                                tdk_icerik += text + "\n\n"
+                        
+                        if len(tdk_icerik) < 100:
+                            # Alternatif TDK arama
+                            for p in tdk_soup.find_all('p'):
+                                text = p.get_text().strip()
+                                if len(text) > 50 and sorgu.lower() in text.lower():
+                                    tdk_icerik += text + "\n\n"
                 except:
-                    tdk_icerik = "TDK bağlantı hatası."
+                    tdk_icerik = ""
                 
                 # Birleştirilmiş rapor
                 rapor = f"# 🚀 BİRLEŞİK MOTOR ANALİZİ: {sorgu.upper()}\n\n"
@@ -813,7 +860,7 @@ if sorgu:
                     rapor += f"## 📚 Vikipedi (Ansiklopedik)\n{wiki_icerik}\n\n"
                 
                 if tdk_icerik and len(tdk_icerik) > 50:
-                    rapor += f"## 📖 TDK Sözlük (Resmi Tanım)\n{tdk_icerik}\n\n"
+                    rapor += f"## 📖 TDK Sözlük (Resmi Tanım)\n{tdk_icerik[:800]}...\n\n"
                 
                 if not wiki_icerik and (not tdk_icerik or len(tdk_icerik) < 50):
                     rapor = f"# ❌ SONUÇ BULUNAMADI\n\n'{sorgu}' için Türkçe kaynaklarda yeterli bilgi bulunamadı.\n\n**Öneriler:**\n• Terimin yazımını kontrol edin\n• Daha genel bir terim deneyin\n• Derin Düşünen motorunu kullanın"
@@ -822,7 +869,7 @@ if sorgu:
                 st.session_state.konu = sorgu
                 
             except Exception as e:
-                st.session_state.bilgi = f"# ⚠️ SİSTEM HATASI\n\nArama sırasında teknik bir hata oluştu:\n\n`{str(e)}`\n\nLütfen daha sonra tekrar deneyin."
+                st.session_state.bilgi = f"# ⚠️ SİSTEM HATASI\n\nArama sırasında teknik bir hata oluştu.\n\nLütfen daha sonra tekrar deneyin."
                 st.session_state.konu = sorgu
         
         elif m_secim == "🤔 Derin Düşünen":
@@ -840,16 +887,19 @@ if sorgu:
     st.session_state.arama_devam = False
     
     # Veritabanına kaydet (misafir değilse)
-    if st.session_state.bilgi and not st.session_state.is_guest:
-        c.execute("INSERT INTO aramalar VALUES (?,?,?,?,?)", 
-                 (st.session_state.user, st.session_state.konu, 
-                  st.session_state.bilgi, str(datetime.datetime.now()), m_secim))
-        conn.commit()
+    if st.session_state.bilgi and not st.session_state.get('is_guest', False):
+        try:
+            c.execute("INSERT INTO aramalar VALUES (?,?,?,?,?)", 
+                     (st.session_state.user, st.session_state.konu, 
+                      st.session_state.bilgi, str(datetime.datetime.now()), m_secim))
+            conn.commit()
+        except:
+            pass
     
     st.rerun()
 
 # --- 🤔 DERİN DÜŞÜNEN MODU SİTE GEÇİŞİ ---
-if m_secim == "🤔 Derin Düşünen" and st.session_state.yap_butonu:
+if m_secim == "🤔 Derin Düşünen" and st.session_state.get('yap_butonu', False):
     st.markdown("---")
     st.markdown("### 🏗️ SİTE SİTE İLERLEME")
     
@@ -916,11 +966,14 @@ if m_secim == "🤔 Derin Düşünen" and st.session_state.yap_butonu:
                     st.session_state.yap_butonu = False
                     
                     # Veritabanına kaydet (misafir değilse)
-                    if not st.session_state.is_guest:
-                        c.execute("INSERT INTO aramalar VALUES (?,?,?,?,?)", 
-                                 (st.session_state.user, st.session_state.konu, 
-                                  st.session_state.bilgi, str(datetime.datetime.now()), m_secim))
-                        conn.commit()
+                    if not st.session_state.get('is_guest', False):
+                        try:
+                            c.execute("INSERT INTO aramalar VALUES (?,?,?,?,?)", 
+                                     (st.session_state.user, st.session_state.konu, 
+                                      st.session_state.bilgi, str(datetime.datetime.now()), m_secim))
+                            conn.commit()
+                        except:
+                            pass
                     
                     st.rerun()
                 else:
@@ -930,7 +983,7 @@ if m_secim == "🤔 Derin Düşünen" and st.session_state.yap_butonu:
                     st.rerun()
     
     # Mevcut durumu göster
-    if hasattr(st.session_state, 'site_listesi'):
+    if hasattr(st.session_state, 'site_listesi') and st.session_state.site_listesi:
         st.markdown(f"**İlerleme:** {st.session_state.aktif_site}/{len(st.session_state.site_listesi)} site")
         
         # Site listesini göster
@@ -951,7 +1004,7 @@ if st.session_state.son_sorgu and not st.session_state.arama_devam and st.sessio
     <div style='background-color: rgba(178, 34, 34, 0.08); padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid rgba(178, 34, 34, 0.3);'>
         <strong style='color: #b22222;'>🔍 AKTİF SORGUNUZ:</strong> {st.session_state.son_sorgu}<br>
         <strong style='color: #b22222;'>🎯 MOD:</strong> {m_secim}<br>
-        <strong style='color: #b22222;'>👤 KULLANICI:</strong> {st.session_state.user}{" (Misafir)" if st.session_state.is_guest else ""}
+        <strong style='color: #b22222;'>👤 KULLANICI:</strong> {st.session_state.user}{" (Misafir)" if st.session_state.get('is_guest', False) else ""}
     </div>
     """, unsafe_allow_html=True)
     
@@ -971,7 +1024,7 @@ if st.session_state.son_sorgu and not st.session_state.arama_devam and st.sessio
             st.download_button(
                 label="📥 PROFESYONEL PDF RAPOR İNDİR",
                 data=pdf_data,
-                file_name=f"TurkAI_Raporu_{st.session_state.konu[:25].replace(' ', '_')}.pdf",
+                file_name=f"TurkAI_Raporu_{str(st.session_state.konu)[:25].replace(' ', '_')}.pdf",
                 mime="application/pdf",
                 use_container_width=True,
                 type="primary"
@@ -994,8 +1047,8 @@ if st.session_state.son_sorgu and not st.session_state.arama_devam and st.sessio
             st.info("Rapor panoya kopyalandı")
     
     with col3:
-        if st.button("⭐ KAYDET", use_container_width=True, type="secondary", disabled=st.session_state.is_guest):
-            if not st.session_state.is_guest:
+        if st.button("⭐ KAYDET", use_container_width=True, type="secondary", disabled=st.session_state.get('is_guest', False)):
+            if not st.session_state.get('is_guest', False):
                 st.success("Arama geçmişe kaydedildi")
             else:
                 st.warning("Misafir modunda kayıt yapılamaz")
