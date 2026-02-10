@@ -12,53 +12,15 @@ import time
 st.set_page_config(page_title="TürkAI | Kurumsal Analiz", page_icon="🇹🇷", layout="wide")
 APK_URL = "https://github.com/31madaracollet/TurkAI-v1/raw/refs/heads/main/4e47617eff77a24ebec8.apk"
 
-# --- 🎨 TEMA VE DİNAMİK RENKLER (KARANLIK/AYDINLIK MOD) ---
+# --- 🎨 TEMA VE DİNAMİK RENKLER ---
 st.markdown("""
     <style>
     :root { --primary-red: #cc0000; }
-    
-    /* Dinamik Metin Renkleri */
-    .stApp {
-        color: inherit;
-    }
-    
     .stProgress > div > div > div > div { background-image: linear-gradient(to right, #800000, #cc0000); }
-    
-    .giris-kapsayici { 
-        border: 1px solid rgba(204, 0, 0, 0.3); 
-        border-radius: 12px; 
-        padding: 30px; 
-        background: rgba(128, 128, 128, 0.05); 
-    }
-    
-    .apk-buton { 
-        display: block; 
-        background: var(--primary-red); 
-        color: white !important; 
-        text-align: center; 
-        padding: 12px; 
-        border-radius: 8px; 
-        text-decoration: none; 
-        font-weight: bold; 
-        margin-top: 15px; 
-    }
-    
-    .arastirma-notu {
-        padding: 10px;
-        border-radius: 8px;
-        border-left: 4px solid var(--primary-red);
-        background-color: rgba(204, 0, 0, 0.1);
-        margin-top: 10px;
-        font-size: 0.9rem;
-    }
-    
-    /* Sonuç Kutusu İçin Adaptif Renk */
-    .sonuc-metni {
-        padding: 20px; 
-        border-radius: 10px; 
-        border: 1px solid rgba(128, 128, 128, 0.2);
-        line-height: 1.6;
-    }
+    .giris-kapsayici { border: 1px solid rgba(204, 0, 0, 0.3); border-radius: 12px; padding: 30px; background: rgba(128, 128, 128, 0.05); }
+    .apk-buton { display: block; background: var(--primary-red); color: white !important; text-align: center; padding: 12px; border-radius: 8px; text-decoration: none; font-weight: bold; margin-top: 15px; }
+    .arastirma-notu { padding: 10px; border-radius: 8px; border-left: 4px solid var(--primary-red); background-color: rgba(204, 0, 0, 0.1); margin-top: 10px; font-size: 0.9rem; }
+    .sonuc-metni { padding: 20px; border-radius: 10px; border: 1px solid rgba(128, 128, 128, 0.2); line-height: 1.6; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -71,12 +33,13 @@ def db_baslat():
     return conn, c
 conn, c = db_baslat()
 
-# --- 🔑 OTURUM ---
+# --- 🔑 OTURUM YÖNETİMİ ---
 if "user" not in st.session_state: st.session_state.user = None
 if "bilgi" not in st.session_state: st.session_state.bilgi = None
 if "konu" not in st.session_state: st.session_state.konu = ""
 if "kaynak_index" not in st.session_state: st.session_state.kaynak_index = 0
 if "tum_kaynaklar" not in st.session_state: st.session_state.tum_kaynaklar = []
+if "durdur" not in st.session_state: st.session_state.durdur = False
 
 # --- 🔧 FONKSİYONLAR (KORUNDU) ---
 def yabanci_karakter_temizle(metin):
@@ -106,13 +69,23 @@ def pdf_olustur(baslik, icerik):
     except: return None
 
 def akiskan_yazi(metin):
+    """Yazıyı karakter karakter basar ve durdurma özelliği sunar"""
     placeholder = st.empty()
+    stop_button_placeholder = st.empty()
     full_text = ""
+    st.session_state.durdur = False
+    
     for char in metin:
+        if stop_button_placeholder.button("🛑 Akışı Durdur", key=f"stop_{st.session_state.kaynak_index}"):
+            st.session_state.durdur = True
+            stop_button_placeholder.empty()
+            break
         full_text += char
         placeholder.markdown(f"<div class='sonuc-metni'>{full_text}▌</div>", unsafe_allow_html=True)
         time.sleep(0.001)
-    placeholder.markdown(f"<div class='sonuc-metni'>{full_text}</div>", unsafe_allow_html=True)
+    
+    placeholder.markdown(f"<div class='sonuc-metni'>{full_text if st.session_state.durdur else metin}</div>", unsafe_allow_html=True)
+    stop_button_placeholder.empty()
 
 def site_tara_brave_style(url, sorgu, site_adi):
     try:
@@ -129,7 +102,7 @@ def site_tara_brave_style(url, sorgu, site_adi):
         return (site_adi, final) if len(final) > 50 else (site_adi, None)
     except: return (site_adi, None)
 
-# --- 🔐 GİRİŞ & KAYIT ---
+# --- 🔐 GİRİŞ & KAYIT (AYNEN KORUNDU) ---
 if not st.session_state.user:
     _, col2, _ = st.columns([1, 1.5, 1])
     with col2:
@@ -156,7 +129,7 @@ if not st.session_state.user:
         st.markdown(f'<a href="{APK_URL}" class="apk-buton">TürkAI Mobile APK İndir</a>', unsafe_allow_html=True)
     st.stop()
 
-# --- 🚀 PANEL ---
+# --- 🚀 ANA PANEL ---
 with st.sidebar:
     st.markdown(f"**🛡️ Aktif Yetkili:** {st.session_state.user}")
     m_secim = st.radio("Sorgu Metodu:", ["V1 (Ansiklopedik)", "Sözlük (TDK)", "V3 (Matematik)", "🤔 Derin Düşünen"])
@@ -170,7 +143,6 @@ with st.sidebar:
     if st.button("Oturumu Kapat"): st.session_state.clear(); st.rerun()
 
 st.title("Araştırma Terminali")
-# --- 📝 NOT EKLEMESİ ---
 st.markdown("<div class='arastirma-notu'><b>Not:</b> Araştırmak istediğiniz konunun <b>ANAHTAR KELİMESİNİ</b> yazınız.</div>", unsafe_allow_html=True)
 
 sorgu = st.chat_input("Analiz edilecek konuyu yazın...")
@@ -191,15 +163,13 @@ if sorgu:
             for i, url in enumerate(siteler):
                 status.info(f"Tarama yapılıyor: {urllib.parse.urlparse(url).netloc} ({i+1}/15)")
                 p_bar.progress((i+1)/len(siteler))
-                res = site_tara_brave_style(url, sorgu, f"Kaynak {i+1}")
+                res = site_tara_brave_style(url, sorgu, f"Kaynak {i+1}: {urllib.parse.urlparse(url).netloc}")
                 if res[1]: bulunanlar.append(res)
             st.session_state.tum_kaynaklar = bulunanlar
-        elif m_secim == "Sözlük (TDK)":
-            p_bar.progress(50); res = site_tara_brave_style(f"https://sozluk.gov.tr/gts?ara={q_enc}", sorgu, "TDK")
-            st.session_state.tum_kaynaklar = [res] if res[1] else []
-            p_bar.progress(100)
         else:
-            p_bar.progress(50); res = site_tara_brave_style(f"https://tr.wikipedia.org/wiki/{q_enc}", sorgu, "V1")
+            p_bar.progress(50)
+            url = f"https://sozluk.gov.tr/gts?ara={q_enc}" if m_secim == "Sözlük (TDK)" else f"https://tr.wikipedia.org/wiki/{q_enc}"
+            res = site_tara_brave_style(url, sorgu, m_secim)
             st.session_state.tum_kaynaklar = [res] if res[1] else []
             p_bar.progress(100)
 
@@ -210,19 +180,20 @@ if sorgu:
         status.empty(); p_bar.empty()
     st.rerun()
 
+# --- 📊 SONUÇ ---
 if st.session_state.bilgi:
     st.subheader(f"📊 Rapor: {st.session_state.konu}")
     active = st.session_state.tum_kaynaklar[st.session_state.kaynak_index]
-    st.caption(f"📍 Kaynak: {active[0]}")
+    st.caption(f"📍 Aktif Kaynak: {active[0]}")
     
-    st.markdown("<div style='border-left: 5px solid #cc0000; margin-bottom: 20px;'>", unsafe_allow_html=True)
-    akiskan_yazi(st.session_state.bilgi)
-    st.markdown("</div>", unsafe_allow_html=True)
+    # Her kaynak geçişinde akışın baştan temiz başlaması için container
+    with st.container():
+        akiskan_yazi(st.session_state.bilgi)
     
     c1, c2 = st.columns(2)
     with c1:
         pdf = pdf_olustur(st.session_state.konu, st.session_state.bilgi)
-        if pdf: st.download_button("📥 PDF Olarak Kaydet", pdf, "TurkAI_Rapor.pdf", use_container_width=True)
+        if pdf: st.download_button("📥 PDF Olarak Kaydet", pdf, f"{st.session_state.konu}_Rapor.pdf", use_container_width=True)
     with c2:
         if len(st.session_state.tum_kaynaklar) > 1:
             if st.button("🔄 Yeniden Yap (Sonraki Kaynak)", use_container_width=True):
