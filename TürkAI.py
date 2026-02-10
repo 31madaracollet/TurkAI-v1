@@ -17,10 +17,10 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 🔗 GITHUB DIREKT INDIRME LİNKİ ---
+# --- 🔗 MOBİL UYGULAMA LİNKİ ---
 APK_URL = "https://github.com/31madaracollet/TurkAI-v1/raw/refs/heads/main/4e47617eff77a24ebec8.apk"
 
-# --- 🎨 PROFESYONEL TASARIM (LÜKS & CİDDİ) ---
+# --- 🎨 TASARIM (CİDDİ & LÜKS) ---
 st.markdown("""
     <style>
     :root {
@@ -29,13 +29,11 @@ st.markdown("""
         --dark-bg: #121212;
         --dark-card: #1E1E1E;
         --text-light: #E0E0E0;
-        --text-dark: #212121;
-        --border-radius: 8px;
     }
     
     /* Genel Yapı */
     .stApp {
-        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     }
 
     /* Başlıklar */
@@ -45,6 +43,18 @@ st.markdown("""
     }
     
     h1 { border-bottom: 2px solid var(--accent-color); padding-bottom: 10px; }
+
+    /* Özel Not Kutusu */
+    .warning-note {
+        background-color: rgba(255, 193, 7, 0.15);
+        border-left: 5px solid #ffc107;
+        padding: 15px;
+        border-radius: 5px;
+        color: var(--text-light);
+        font-weight: bold;
+        margin-bottom: 20px;
+        font-size: 1rem;
+    }
 
     /* Butonlar */
     .stButton > button {
@@ -61,43 +71,34 @@ st.markdown("""
         box-shadow: 0 4px 10px rgba(0,0,0,0.3);
     }
 
-    /* Kartlar ve Kutular */
-    .info-box {
-        background-color: rgba(212, 175, 55, 0.1);
-        border-left: 4px solid var(--accent-color);
-        padding: 15px;
-        margin: 15px 0;
-        border-radius: 4px;
-        font-size: 0.95rem;
-    }
-
+    /* Sonuç Kartı */
     .result-card {
         background-color: #f8f9fa;
         border: 1px solid #ddd;
-        padding: 20px;
-        border-radius: var(--border-radius);
+        padding: 25px;
+        border-radius: 8px;
         margin-top: 20px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        color: #333;
     }
     
-    /* Karanlık Mod Desteği için Manuel Ayar */
     @media (prefers-color-scheme: dark) {
         .result-card {
             background-color: var(--dark-card);
             border-color: #333;
-            color: var(--text-light);
+            color: #E0E0E0;
+        }
+        .warning-note {
+            color: #E0E0E0;
         }
     }
 
-    /* Sidebar Hesap Makinesi */
-    .calc-input { margin-bottom: 10px; }
-    
     /* Footer */
     .footer {
         text-align: center;
         margin-top: 50px;
         padding-top: 20px;
-        border-top: 1px solid #ccc;
+        border-top: 1px solid #333;
         color: #666;
         font-size: 0.8rem;
     }
@@ -106,10 +107,9 @@ st.markdown("""
 
 # --- 💾 VERİTABANI ---
 def db_baslat():
-    conn = sqlite3.connect('turkai_pro.db', check_same_thread=False)
+    conn = sqlite3.connect('turkai_v3.db', check_same_thread=False)
     c = conn.cursor()
     c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT)')
-    c.execute('CREATE TABLE IF NOT EXISTS aramalar (kullanici TEXT, konu TEXT, icerik TEXT, tarih TEXT)')
     conn.commit()
     return conn, c
 
@@ -121,15 +121,18 @@ if "bilgi" not in st.session_state: st.session_state.bilgi = None
 if "konu" not in st.session_state: st.session_state.konu = ""
 if "aktif_site_index" not in st.session_state: st.session_state.aktif_site_index = 0
 if "arama_yapildi" not in st.session_state: st.session_state.arama_yapildi = False
-if "mevcut_motor" not in st.session_state: st.session_state.mevcut_motor = "V1"
+if "url_listesi" not in st.session_state: st.session_state.url_listesi = []
 if "hesap_sonuc" not in st.session_state: st.session_state.hesap_sonuc = ""
 
 # --- 🛠 YARDIMCI FONKSİYONLAR ---
 
 def tr_karakter_duzelt(text):
-    """PDF için Türkçe karakterleri Latin karakterlere çevirir."""
+    """PDF için Türkçe karakter düzeltmesi."""
     if not text: return ""
     text = str(text)
+    # Tırnak işaretleri ve özel karakterler
+    text = text.replace("“", '"').replace("”", '"').replace("’", "'")
+    
     mapping = {
         'İ': 'I', 'ı': 'i', 'Ş': 'S', 'ş': 's', 
         'Ğ': 'G', 'ğ': 'g', 'Ü': 'U', 'ü': 'u', 
@@ -139,31 +142,54 @@ def tr_karakter_duzelt(text):
     for k, v in mapping.items():
         text = text.replace(k, v)
     
-    # Desteklenmeyen diğer karakterleri temizle
     return text.encode('latin-1', 'replace').decode('latin-1')
 
-def site_tara(url, sorgu):
-    """Basit ve etkili site tarayıcı."""
+def site_tara_brave(url):
+    """Brave Browser gibi davranan gelişmiş tarayıcı."""
     try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
-        response = requests.get(url, headers=headers, timeout=5)
+        # Brave Browser Header Taklidi
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Brave";v="120"',
+            'Sec-Ch-Ua-Mobile': '?0',
+            'Sec-Ch-Ua-Platform': '"Windows"',
+            'Upgrade-Insecure-Requests': '1',
+            'Cache-Control': 'max-age=0'
+        }
+        
+        response = requests.get(url, headers=headers, timeout=6)
+        
         if response.status_code == 200:
             soup = BeautifulSoup(response.content, 'html.parser')
             
-            # Gereksizleri at
-            for script in soup(["script", "style", "nav", "footer", "aside"]):
-                script.decompose()
+            # --- BRAVE AD-BLOCK MANTIĞI ---
+            # Reklam, script, tracking, pop-up elementlerini temizle
+            blacklist = [
+                "script", "style", "nav", "footer", "aside", "form", "iframe",
+                "div.ads", "div.reklam", "div.banner", "div.cookie-consent", 
+                "div.popup", "div.social-share", "header"
+            ]
+            for tag in blacklist:
+                for element in soup.select(tag):
+                    element.decompose()
             
-            text = soup.get_text()
-            lines = (line.strip() for line in text.splitlines())
-            chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
-            text = '\n'.join(chunk for chunk in chunks if chunk)
+            # Metni al ve temizle
+            text = soup.get_text(separator='\n')
             
-            # Basit içerik kontrolü
-            if len(text) > 200:
-                return text[:1500] # Çok uzun metinleri kes
-            return None
-    except:
+            # Boş satırları sil
+            lines = [line.strip() for line in text.splitlines() if line.strip()]
+            clean_text = '\n\n'.join(lines)
+            
+            # Eğer içerik çok kısaysa (muhtemelen bloklanmıştır veya boş sayfadır)
+            if len(clean_text) < 250:
+                return None
+                
+            # Çok uzun metinleri sınırla (PDF patlamasın diye)
+            return clean_text[:3000]
+            
+    except Exception as e:
         return None
     return None
 
@@ -175,11 +201,14 @@ def pdf_olustur_pro(baslik, icerik):
         
         # Başlık
         pdf.set_font("Arial", 'B', 16)
-        pdf.cell(0, 10, tr_karakter_duzelt("TÜRKAI ANALIZ RAPORU"), ln=True, align='C')
+        pdf.set_text_color(128, 0, 0) # Bordo
+        pdf.cell(0, 10, tr_karakter_duzelt("TURKAI ANALIZ RAPORU"), ln=True, align='C')
+        pdf.set_draw_color(212, 175, 55) # Altın
         pdf.line(10, 25, 200, 25)
         pdf.ln(20)
         
         # Bilgiler
+        pdf.set_text_color(0, 0, 0)
         pdf.set_font("Arial", 'B', 12)
         pdf.cell(40, 10, tr_karakter_duzelt(f"Konu: {baslik}"), ln=True)
         pdf.cell(40, 10, tr_karakter_duzelt(f"Tarih: {datetime.datetime.now().strftime('%d.%m.%Y')}"), ln=True)
@@ -193,11 +222,10 @@ def pdf_olustur_pro(baslik, icerik):
         # Footer
         pdf.set_y(-30)
         pdf.set_font("Arial", 'I', 8)
-        pdf.cell(0, 10, tr_karakter_duzelt("TurkAI Profesyonel Arastirma Sistemi - 2026"), align='C')
+        pdf.cell(0, 10, tr_karakter_duzelt("TurkAI Profesyonel Arastirma Terminali - 2026"), align='C')
         
         return pdf.output(dest='S').encode('latin-1')
     except Exception as e:
-        st.error(f"PDF Hatasi: {str(e)}")
         return None
 
 # --- 🔐 GİRİŞ EKRANI ---
@@ -206,9 +234,9 @@ if not st.session_state.user:
     with col2:
         st.markdown("<br><br>", unsafe_allow_html=True)
         st.markdown("""
-        <div style='text-align: center; border: 2px solid #800000; padding: 40px; border-radius: 10px; background-color: var(--card-color);'>
+        <div style='text-align: center; border: 2px solid #800000; padding: 40px; border-radius: 10px; background-color: var(--dark-card);'>
             <h1 style='color: #800000; font-size: 3rem;'>🇹🇷 TÜRKAI</h1>
-            <p style='color: #555; font-size: 1.2rem; font-style: italic;'>Profesyonel Araştırma Çözümleri</p>
+            <p style='color: #888; font-size: 1.2rem;'>Profesyonel Araştırma Terminali</p>
             <hr style='border-color: #D4AF37;'>
         </div>
         """, unsafe_allow_html=True)
@@ -218,14 +246,22 @@ if not st.session_state.user:
         with tab1:
             u = st.text_input("Kullanıcı Adı")
             p = st.text_input("Şifre", type="password")
-            if st.button("Giriş Yap", use_container_width=True):
-                h = hashlib.sha256(p.encode()).hexdigest()
-                c.execute("SELECT * FROM users WHERE username=? AND password=?", (u, h))
-                if c.fetchone():
-                    st.session_state.user = u
+            
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("Sisteme Gir", use_container_width=True):
+                    h = hashlib.sha256(p.encode()).hexdigest()
+                    c.execute("SELECT * FROM users WHERE username=? AND password=?", (u, h))
+                    if c.fetchone():
+                        st.session_state.user = u
+                        st.rerun()
+                    else:
+                        st.error("Hatalı bilgiler.")
+            with c2:
+                # MİSAFİR GİRİŞİ BUTONU
+                if st.button("Misafir Girişi", use_container_width=True, type="secondary"):
+                    st.session_state.user = "Misafir"
                     st.rerun()
-                else:
-                    st.error("Hatalı bilgiler.")
 
         with tab2:
             nu = st.text_input("Yeni Kullanıcı")
@@ -238,15 +274,23 @@ if not st.session_state.user:
                 except:
                     st.error("Kullanıcı adı alınmış.")
 
-        st.markdown(f'<a href="{APK_URL}" style="text-decoration:none;"><button style="width:100%; background-color:#333; color:white; padding:10px; border-radius:5px; margin-top:20px;">📱 Mobil Uygulamayı İndir</button></a>', unsafe_allow_html=True)
+        st.markdown(f'<a href="{APK_URL}" style="text-decoration:none;"><button style="width:100%; background-color:#333; color:white; padding:10px; border-radius:5px; margin-top:20px; border:none; cursor:pointer;">📱 Mobil Uygulamayı İndir</button></a>', unsafe_allow_html=True)
+        
+        # Giriş Ekranı Footer
+        st.markdown("""
+        <div style='text-align: center; margin-top: 20px; color: #666; font-size: 0.8rem;'>
+            <p>2026 © Tüm Hakları Saklıdır.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
         st.stop()
 
-# --- 🖥️ ANA ARAYÜZ (Giriş Yapıldıktan Sonra) ---
+# --- 🖥️ ANA ARAYÜZ ---
 
 # Sidebar
 with st.sidebar:
-    st.title("🎛️ KONTROL PANELİ")
-    st.write(f"👤 **Aktif Kullanıcı:** {st.session_state.user}")
+    st.markdown("### 🎛️ KONTROL PANELİ")
+    st.write(f"👤 **Aktif:** {st.session_state.user}")
     
     if st.button("Çıkış Yap"):
         st.session_state.user = None
@@ -258,138 +302,133 @@ with st.sidebar:
     calc_exp = st.text_input("İşlem (Örn: 125*18)", key="calc_input")
     if st.button("Hesapla"):
         try:
-            # Güvenlik için sadece sayı ve işlem karakterlerine izin ver
             allowed = set("0123456789+-*/.()")
             if set(calc_exp) <= allowed:
                 st.session_state.hesap_sonuc = str(eval(calc_exp))
             else:
-                st.session_state.hesap_sonuc = "Hata: Geçersiz karakter"
+                st.session_state.hesap_sonuc = "Hata"
         except:
             st.session_state.hesap_sonuc = "Hata"
     
     if st.session_state.hesap_sonuc:
-        st.markdown(f"<div style='background-color:#eee; padding:10px; border-radius:5px; color:#000; font-weight:bold; text-align:center;'>Sonuç: {st.session_state.hesap_sonuc}</div>", unsafe_allow_html=True)
+        st.info(f"Sonuç: {st.session_state.hesap_sonuc}")
 
     st.divider()
     st.markdown(f'<a href="{APK_URL}" style="text-decoration:none;">📱 Android Uygulama</a>', unsafe_allow_html=True)
 
-# Main Area
+# Main Content
 st.title("PROFESYONEL ARAŞTIRMA TERMİNALİ")
 
-arama_motoru = st.radio("Araştırma Modu Seçin:", ["🚀 Birleşik Motor (Hızlı)", "🧠 Derin Düşünen (Detaylı Sıralı)"], horizontal=True)
+# İSTENİLEN UYARI NOTU
+st.markdown("""
+<div class='warning-note'>
+    ⚠️ Not: Araştırmak istediğiniz konunun ANAHTAR KELİMESİNİ yazınız. (Örn: Türk kimdir?❌ Türk✅)
+</div>
+""", unsafe_allow_html=True)
 
-sorgu = st.text_input("Araştırma Konusu:", placeholder="Örn: Yapay Zeka Tarihçesi")
+col_sorgu, col_motor = st.columns([3, 1])
 
-if st.button("ARAŞTIRMAYI BAŞLAT", type="primary"):
+with col_sorgu:
+    sorgu = st.text_input("Araştırma Konusu:", placeholder="Konuyu buraya yazın...")
+
+with col_motor:
+    motor_tipi = st.selectbox("Motor Seçimi", ["🚀 Hızlı Motor (V1)", "🧠 Derin Motor (V2)"])
+
+if st.button("ARAŞTIRMAYI BAŞLAT", type="primary", use_container_width=True):
     if not sorgu:
         st.warning("Lütfen bir konu giriniz.")
     else:
-        st.session_state.konu = sorgu
+        st.session_state.konu = sorgu.strip()
         st.session_state.arama_yapildi = True
-        st.session_state.aktif_site_index = 0 # Aramayı sıfırla
+        st.session_state.aktif_site_index = 0
         st.session_state.bilgi = None
         
-        if "Derin" in arama_motoru:
-            st.session_state.mevcut_motor = "V2"
+        # URL Listesi Oluşturma (İki motor için farklı listeler)
+        q = urllib.parse.quote(st.session_state.konu)
+        
+        if "Hızlı" in motor_tipi:
+            # V1: Hızlı, güvenilir, sözlük ve ansiklopedi ağırlıklı
+            st.session_state.url_listesi = [
+                f"https://tr.wikipedia.org/wiki/{q}",
+                f"https://sozluk.gov.tr/gts?ara={q}",
+                f"https://www.turkcebilgi.com/{q}",
+                f"https://www.nedir.com/{q}",
+                f"https://www.etimolojiturkce.com/kelime/{q}"
+            ]
         else:
-            st.session_state.mevcut_motor = "V1"
+            # V2: Derin, makale, biyografi ve detay ağırlıklı
+            st.session_state.url_listesi = [
+                f"https://www.biyografi.info/kisi/{q}",
+                f"https://tr.wikipedia.org/wiki/{q}",
+                f"https://dergipark.org.tr/tr/search?q={q}",
+                f"https://islamansiklopedisi.org.tr/ara?q={q}",
+                f"https://www.kimkimdir.gen.tr/ara/{q}",
+                f"https://1000kitap.com/ara?q={q}"
+            ]
         st.rerun()
 
-# --- 🧠 DERİN DÜŞÜNEN MANTIĞI ---
-if st.session_state.arama_yapildi and st.session_state.mevcut_motor == "V2":
-    konu_url = urllib.parse.quote(st.session_state.konu)
+# --- ARAMA SONUÇLARI VE DÖNGÜSÜ ---
+if st.session_state.arama_yapildi:
+    urls = st.session_state.url_listesi
+    idx = st.session_state.aktif_site_index
     
-    # Sıralı Kaynak Listesi
-    kaynaklar = [
-        f"https://tr.wikipedia.org/wiki/{konu_url}",
-        f"https://www.turkcebilgi.com/{konu_url}",
-        f"https://www.nedir.com/{konu_url}",
-        f"https://www.biyografi.info/kisi/{konu_url}",
-        f"https://sozluk.gov.tr/gts?ara={konu_url}",
-        f"https://dergipark.org.tr/tr/search?q={konu_url}",
-        f"https://www.google.com/search?q={konu_url}" # Fallback
-    ]
-    
-    mevcut_index = st.session_state.aktif_site_index
-    
-    if mevcut_index < len(kaynaklar):
-        url = kaynaklar[mevcut_index]
-        st.info(f"Derin Düşünen Analiz Ediyor... (Kaynak {mevcut_index + 1}/{len(kaynaklar)}): {url}")
+    if idx < len(urls):
+        current_url = urls[idx]
         
-        with st.spinner('Veriler çekiliyor ve işleniyor...'):
-            bulunan_veri = site_tara(url, st.session_state.konu)
+        # Kullanıcıya bilgi ver
+        st.info(f"🔎 {motor_tipi} ile taranıyor... (Kaynak {idx+1}/{len(urls)})")
+        st.write(f"🔗 Adres: {current_url}")
+        
+        with st.spinner('Veriler analiz ediliyor, reklamlar engelleniyor...'):
+            bulunan_veri = site_tara_brave(current_url)
             
             if bulunan_veri:
+                # Veri Bulundu
                 st.session_state.bilgi = bulunan_veri
                 
+                # Kart Görünümü
                 st.markdown(f"""
                 <div class='result-card'>
-                    <h3>✅ Sonuç Bulundu (Kaynak: {url})</h3>
-                    <p>{bulunan_veri}</p>
+                    <h3 style='border-bottom:1px solid #ddd; padding-bottom:10px;'>✅ Analiz Sonucu</h3>
+                    <div style='max-height: 400px; overflow-y: auto; white-space: pre-wrap;'>{bulunan_veri}</div>
                 </div>
                 """, unsafe_allow_html=True)
                 
-                col_a, col_b = st.columns(2)
-                with col_a:
+                # Aksiyon Butonları
+                col_pdf, col_next = st.columns(2)
+                
+                with col_pdf:
                     pdf_data = pdf_olustur_pro(st.session_state.konu, bulunan_veri)
                     if pdf_data:
                         st.download_button(
-                            label="📄 Raporu PDF Olarak İndir",
+                            label="📄 Bu Sonucu PDF İndir",
                             data=pdf_data,
-                            file_name=f"TurkAI_Rapor_{datetime.datetime.now().strftime('%Y%m%d')}.pdf",
-                            mime="application/pdf"
+                            file_name=f"TurkAI_Rapor_{st.session_state.konu}.pdf",
+                            mime="application/pdf",
+                            use_container_width=True
                         )
-                with col_b:
-                    if st.button("🔄 Bu Kaynağı Beğenmedim, Sıradakine Geç"):
+                
+                with col_next:
+                    if st.button("🔄 Bu Kaynağı Beğenmedim, Sonrakine Geç", use_container_width=True):
                         st.session_state.aktif_site_index += 1
                         st.rerun()
+                        
             else:
-                # Veri bulamazsa otomatik sonrakine geç
-                time.sleep(1)
+                # Veri bulunamadıysa otomatik geç
+                time.sleep(0.5)
                 st.session_state.aktif_site_index += 1
                 st.rerun()
     else:
-        st.error("Tüm kaynaklar tarandı ancak anlamlı bir sonuç bulunamadı veya listenin sonuna gelindi.")
-        if st.button("Başa Dön"):
+        st.error("❌ Mevcut kaynakların tamamı tarandı. Daha fazla sonuç bulunamadı.")
+        if st.button("Aramayı Sıfırla"):
+            st.session_state.arama_yapildi = False
             st.session_state.aktif_site_index = 0
             st.rerun()
-
-# --- 🚀 BİRLEŞİK MOTOR MANTIĞI ---
-elif st.session_state.arama_yapildi and st.session_state.mevcut_motor == "V1":
-    with st.spinner('Hızlı arama yapılıyor...'):
-        # Basit Wikipedia API
-        try:
-            api_url = f"https://tr.wikipedia.org/api/rest_v1/page/summary/{urllib.parse.quote(st.session_state.konu)}"
-            res = requests.get(api_url)
-            if res.status_code == 200:
-                data = res.json()
-                icerik = data.get('extract', 'İçerik yok.')
-                st.session_state.bilgi = icerik
-                
-                st.markdown(f"""
-                <div class='result-card'>
-                    <h3>📚 Vikipedi Özeti</h3>
-                    <p>{icerik}</p>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                pdf_data = pdf_olustur_pro(st.session_state.konu, icerik)
-                if pdf_data:
-                    st.download_button(
-                        label="📄 PDF İndir",
-                        data=pdf_data,
-                        file_name="arastirma_ozet.pdf",
-                        mime="application/pdf"
-                    )
-            else:
-                st.error("Hızlı aramada sonuç bulunamadı. 'Derin Düşünen' modunu deneyin.")
-        except:
-            st.error("Bağlantı hatası.")
 
 # --- FOOTER ---
 st.markdown("""
     <div class='footer'>
-        <p>&copy; 2026 TürkAI Profesyonel Sistemler | Lüks & Güvenli Araştırma</p>
-        <p>Coded with ❤️ by TürkAI Team</p>
+        <p>&copy; 2026 TürkAI Profesyonel Sistemler | Tüm Hakları Saklıdır.</p>
+        <p>Gelişmiş Türkçe Araştırma Motoru</p>
     </div>
 """, unsafe_allow_html=True)
