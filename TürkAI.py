@@ -12,13 +12,53 @@ import time
 st.set_page_config(page_title="TürkAI | Kurumsal Analiz", page_icon="🇹🇷", layout="wide")
 APK_URL = "https://github.com/31madaracollet/TurkAI-v1/raw/refs/heads/main/4e47617eff77a24ebec8.apk"
 
-# --- 🎨 TEMA VE SÜSLEMELER ---
+# --- 🎨 TEMA VE DİNAMİK RENKLER (KARANLIK/AYDINLIK MOD) ---
 st.markdown("""
     <style>
     :root { --primary-red: #cc0000; }
+    
+    /* Dinamik Metin Renkleri */
+    .stApp {
+        color: inherit;
+    }
+    
     .stProgress > div > div > div > div { background-image: linear-gradient(to right, #800000, #cc0000); }
-    .giris-kapsayici { border: 1px solid rgba(204, 0, 0, 0.3); border-radius: 12px; padding: 30px; background: rgba(255,255,255,0.05); }
-    .apk-buton { display: block; background: var(--primary-red); color: white !important; text-align: center; padding: 12px; border-radius: 8px; text-decoration: none; font-weight: bold; margin-top: 15px; }
+    
+    .giris-kapsayici { 
+        border: 1px solid rgba(204, 0, 0, 0.3); 
+        border-radius: 12px; 
+        padding: 30px; 
+        background: rgba(128, 128, 128, 0.05); 
+    }
+    
+    .apk-buton { 
+        display: block; 
+        background: var(--primary-red); 
+        color: white !important; 
+        text-align: center; 
+        padding: 12px; 
+        border-radius: 8px; 
+        text-decoration: none; 
+        font-weight: bold; 
+        margin-top: 15px; 
+    }
+    
+    .arastirma-notu {
+        padding: 10px;
+        border-radius: 8px;
+        border-left: 4px solid var(--primary-red);
+        background-color: rgba(204, 0, 0, 0.1);
+        margin-top: 10px;
+        font-size: 0.9rem;
+    }
+    
+    /* Sonuç Kutusu İçin Adaptif Renk */
+    .sonuc-metni {
+        padding: 20px; 
+        border-radius: 10px; 
+        border: 1px solid rgba(128, 128, 128, 0.2);
+        line-height: 1.6;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -38,7 +78,7 @@ if "konu" not in st.session_state: st.session_state.konu = ""
 if "kaynak_index" not in st.session_state: st.session_state.kaynak_index = 0
 if "tum_kaynaklar" not in st.session_state: st.session_state.tum_kaynaklar = []
 
-# --- 🔧 FONKSİYONLAR (AYNEN KORUNDU) ---
+# --- 🔧 FONKSİYONLAR (KORUNDU) ---
 def yabanci_karakter_temizle(metin):
     return re.sub(r'[^a-zA-Z0-9çğıöşüÇĞİÖŞÜ\s\.,;:!\?\(\)\-\*\+=/]', '', metin)
 
@@ -66,14 +106,13 @@ def pdf_olustur(baslik, icerik):
     except: return None
 
 def akiskan_yazi(metin):
-    """Yazıyı tane tane ekrana basar"""
     placeholder = st.empty()
     full_text = ""
     for char in metin:
         full_text += char
-        placeholder.markdown(f"<div style='color: #333; line-height: 1.6;'>{full_text}▌</div>", unsafe_allow_html=True)
-        time.sleep(0.001) # Çok hızlı ama akıcı
-    placeholder.markdown(f"<div style='color: #333; line-height: 1.6;'>{full_text}</div>", unsafe_allow_html=True)
+        placeholder.markdown(f"<div class='sonuc-metni'>{full_text}▌</div>", unsafe_allow_html=True)
+        time.sleep(0.001)
+    placeholder.markdown(f"<div class='sonuc-metni'>{full_text}</div>", unsafe_allow_html=True)
 
 def site_tara_brave_style(url, sorgu, site_adi):
     try:
@@ -131,6 +170,9 @@ with st.sidebar:
     if st.button("Oturumu Kapat"): st.session_state.clear(); st.rerun()
 
 st.title("Araştırma Terminali")
+# --- 📝 NOT EKLEMESİ ---
+st.markdown("<div class='arastirma-notu'><b>Not:</b> Araştırmak istediğiniz konunun <b>ANAHTAR KELİMESİNİ</b> yazınız.</div>", unsafe_allow_html=True)
+
 sorgu = st.chat_input("Analiz edilecek konuyu yazın...")
 
 if sorgu:
@@ -168,14 +210,12 @@ if sorgu:
         status.empty(); p_bar.empty()
     st.rerun()
 
-# --- 📊 SONUÇ ---
 if st.session_state.bilgi:
     st.subheader(f"📊 Rapor: {st.session_state.konu}")
     active = st.session_state.tum_kaynaklar[st.session_state.kaynak_index]
     st.caption(f"📍 Kaynak: {active[0]}")
     
-    # Yazının Tane Tane Akması
-    st.markdown("<div style='background: #fdfdfd; padding: 20px; border-left: 5px solid #cc0000;'>", unsafe_allow_html=True)
+    st.markdown("<div style='border-left: 5px solid #cc0000; margin-bottom: 20px;'>", unsafe_allow_html=True)
     akiskan_yazi(st.session_state.bilgi)
     st.markdown("</div>", unsafe_allow_html=True)
     
