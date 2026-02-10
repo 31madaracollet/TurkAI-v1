@@ -39,7 +39,6 @@ if "bilgi" not in st.session_state: st.session_state.bilgi = None
 if "konu" not in st.session_state: st.session_state.konu = ""
 if "kaynak_index" not in st.session_state: st.session_state.kaynak_index = 0
 if "tum_kaynaklar" not in st.session_state: st.session_state.tum_kaynaklar = []
-if "durdur" not in st.session_state: st.session_state.durdur = False
 
 # --- 🔧 FONKSİYONLAR (KORUNDU) ---
 def yabanci_karakter_temizle(metin):
@@ -69,23 +68,19 @@ def pdf_olustur(baslik, icerik):
     except: return None
 
 def akiskan_yazi(metin):
-    """Yazıyı karakter karakter basar ve durdurma özelliği sunar"""
+    """Yazıyı karakter karakter basar - Hata Düzeltildi"""
     placeholder = st.empty()
-    stop_button_placeholder = st.empty()
-    full_text = ""
-    st.session_state.durdur = False
+    stop_btn = st.button("🛑 Akışı Durdur", key=f"stop_btn_{st.session_state.kaynak_index}")
     
+    full_text = ""
     for char in metin:
-        if stop_button_placeholder.button("🛑 Akışı Durdur", key=f"stop_{st.session_state.kaynak_index}"):
-            st.session_state.durdur = True
-            stop_button_placeholder.empty()
-            break
+        if stop_btn:
+            placeholder.markdown(f"<div class='sonuc-metni'>{metin}</div>", unsafe_allow_html=True)
+            return
         full_text += char
         placeholder.markdown(f"<div class='sonuc-metni'>{full_text}▌</div>", unsafe_allow_html=True)
         time.sleep(0.001)
-    
-    placeholder.markdown(f"<div class='sonuc-metni'>{full_text if st.session_state.durdur else metin}</div>", unsafe_allow_html=True)
-    stop_button_placeholder.empty()
+    placeholder.markdown(f"<div class='sonuc-metni'>{metin}</div>", unsafe_allow_html=True)
 
 def site_tara_brave_style(url, sorgu, site_adi):
     try:
@@ -102,7 +97,7 @@ def site_tara_brave_style(url, sorgu, site_adi):
         return (site_adi, final) if len(final) > 50 else (site_adi, None)
     except: return (site_adi, None)
 
-# --- 🔐 GİRİŞ & KAYIT (AYNEN KORUNDU) ---
+# --- 🔐 GİRİŞ & KAYIT ---
 if not st.session_state.user:
     _, col2, _ = st.columns([1, 1.5, 1])
     with col2:
@@ -161,7 +156,7 @@ if sorgu:
             siteler = [f"https://tr.wikipedia.org/wiki/{q_enc}", f"https://www.bilgiustam.com/?s={q_enc}", f"https://www.turkcebilgi.com/{q_enc}", f"https://sozluk.gov.tr/gts?ara={q_enc}", f"https://www.nedir.com/{q_enc}", f"https://www.biyografi.info/ara?k={q_enc}", f"https://islamansiklopedisi.org.tr/ara?q={q_enc}", f"https://dergipark.org.tr/tr/search?q={q_enc}", f"https://en.wikipedia.org/wiki/{q_enc}", f"https://www.britannica.com/search?query={q_enc}", f"https://www.worldhistory.org/search/?q={q_enc}", f"https://plato.stanford.edu/search/searcher.py?query={q_enc}", f"https://www.biyografya.com/arama?q={q_enc}", f"https://tr.wiktionary.org/wiki/{q_enc}", f"https://www.etimolojiturkce.com/arama/{q_enc}"]
             bulunanlar = []
             for i, url in enumerate(siteler):
-                status.info(f"Tarama yapılıyor: {urllib.parse.urlparse(url).netloc} ({i+1}/15)")
+                status.info(f"Tarama: {urllib.parse.urlparse(url).netloc} ({i+1}/15)")
                 p_bar.progress((i+1)/len(siteler))
                 res = site_tara_brave_style(url, sorgu, f"Kaynak {i+1}: {urllib.parse.urlparse(url).netloc}")
                 if res[1]: bulunanlar.append(res)
@@ -186,9 +181,7 @@ if st.session_state.bilgi:
     active = st.session_state.tum_kaynaklar[st.session_state.kaynak_index]
     st.caption(f"📍 Aktif Kaynak: {active[0]}")
     
-    # Her kaynak geçişinde akışın baştan temiz başlaması için container
-    with st.container():
-        akiskan_yazi(st.session_state.bilgi)
+    akiskan_yazi(st.session_state.bilgi)
     
     c1, c2 = st.columns(2)
     with c1:
