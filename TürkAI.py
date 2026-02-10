@@ -113,15 +113,6 @@ st.markdown("""
         display: inline-block;
         margin: 0 5px;
     }
-    
-    .site-bilgi {
-        background-color: rgba(0, 100, 0, 0.05);
-        border-left: 4px solid #006400;
-        padding: 12px;
-        margin: 10px 0;
-        border-radius: 0 8px 8px 0;
-        font-size: 0.9rem;
-    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -145,37 +136,41 @@ if "arama_devam" not in st.session_state: st.session_state.arama_devam = False
 if "kaynak_index" not in st.session_state: st.session_state.kaynak_index = 0
 if "tum_kaynaklar" not in st.session_state: st.session_state.tum_kaynaklar = []
 
-# --- 🔧 YARDIMCI FONKSİYONLAR ---
+# --- 🔧 YARDIMCI FONKSİYONLAR (DÜZELTİLDİ) ---
 def yabanci_karakter_temizle(metin):
-    """Latin ve Türkçe karakterler dışındaki alfabeleri temizler"""
-    # Latin harfleri, Türkçe karakterler, sayılar ve standart sembolleri korur
+    if not metin: return ""
     patern = r'[^a-zA-Z0-9çğıöşüÇĞİÖŞÜ\s\.,;:!\?\(\)\-\*\+=/]'
-    temiz_metin = re.sub(patern, '', metin)
-    return temiz_metin
+    return re.sub(patern, '', metin)
 
 def pdf_olustur(baslik, icerik):
-    """FPDF ile PDF raporu oluşturur"""
-    pdf = FPDF()
-    pdf.add_page()
-    # Standart fontlar Türkçe karakter desteklemediği için karakterleri dönüştürürüz
-    # Gerçek uygulamada .ttf font yüklenmesi önerilir
-    def tr_fix(text):
-        return text.replace('ı','i').replace('İ','I').replace('ü','u').replace('Ü','U').replace('ö','o').replace('Ö','O').replace('ç','c').replace('Ç','C').replace('ş','s').replace('Ş','S').replace('ğ','g').replace('Ğ','G')
+    """Unicode hatasını çözen güvenli PDF fonksiyonu"""
+    try:
+        pdf = FPDF()
+        pdf.add_page()
+        
+        def tr_fix(text):
+            if not text: return ""
+            chars = {'ı':'i','İ':'I','ü':'u','Ü':'U','ö':'o','Ö':'O','ç':'c','Ç':'C','ş':'s','Ş':'S','ğ':'g','Ğ':'G'}
+            for k, v in chars.items(): text = text.replace(k, v)
+            # Latin-1'de olmayan tüm karakterleri tamamen siler (Hata almanı engeller)
+            return text.encode('latin-1', 'ignore').decode('latin-1')
 
-    pdf.set_font("Arial", 'B', 16)
-    pdf.cell(0, 10, tr_fix(f"TurkAI Analiz Raporu"), ln=True, align='C')
-    pdf.set_font("Arial", 'B', 12)
-    pdf.cell(0, 10, tr_fix(f"Konu: {baslik}"), ln=True)
-    pdf.cell(0, 10, tr_fix(f"Tarih: {datetime.datetime.now().strftime('%d/%m/%Y %H:%M')}"), ln=True)
-    pdf.ln(5)
-    pdf.set_font("Arial", '', 10)
-    pdf.multi_cell(0, 5, tr_fix(icerik))
-    return pdf.output(dest='S').encode('latin-1')
+        pdf.set_font("Arial", 'B', 16)
+        pdf.cell(0, 10, tr_fix("TurkAI Analiz Raporu"), ln=True, align='C')
+        pdf.set_font("Arial", 'B', 12)
+        pdf.cell(0, 10, tr_fix(f"Konu: {baslik}"), ln=True)
+        pdf.ln(5)
+        pdf.set_font("Arial", '', 10)
+        pdf.multi_cell(0, 5, tr_fix(icerik))
+        # Çıktı alırken latin-1 encode hatasını 'ignore' ile geçiyoruz
+        return pdf.output(dest='S').encode('latin-1', 'ignore')
+    except:
+        return None
 
-def site_tara(url, sorgu, site_adi, timeout=10):
+def site_tara(url, sorgu, site_adi):
     try:
         headers = {'User-Agent': 'Mozilla/5.0'}
-        response = requests.get(url, headers=headers, timeout=timeout)
+        response = requests.get(url, headers=headers, timeout=8)
         soup = BeautifulSoup(response.content, 'html.parser')
         icerik = ""
         paragraphs = soup.find_all('p')
@@ -183,14 +178,6 @@ def site_tara(url, sorgu, site_adi, timeout=10):
             text = p.get_text().strip()
             if len(text) > 80 and sorgu.lower() in text.lower():
                 icerik += text + "\n\n"
-        if len(icerik) < 100:
-            all_text = soup.get_text()
-            lines = all_text.split('\n')
-            for line in lines:
-                clean_line = line.strip()
-                if len(clean_line) > 60 and sorgu.lower() in clean_line.lower():
-                    icerik += clean_line + "\n\n"
-        icerik = re.sub(r'\s+', ' ', icerik).strip()
         if len(icerik) > 50:
             return (site_adi, yabanci_karakter_temizle(icerik[:2000]))
         return (site_adi, None)
@@ -198,128 +185,91 @@ def site_tara(url, sorgu, site_adi, timeout=10):
 
 def derin_arama_yap(sorgu):
     site_listesi = [
-        {'url': f'https://tr.wikipedia.org/wiki/{urllib.parse.quote(sorgu)}', 'adi': 'Wikipedia (TR)', 'oncelik': 10},
-        {'url': f'https://www.biyografi.info/kisi/{urllib.parse.quote(sorgu.lower().replace(" ", "-"))}', 'adi': 'Biyografi.info', 'oncelik': 9},
-        {'url': f'https://www.etimolojiturkce.com/ara?q={urllib.parse.quote(sorgu)}', 'adi': 'Etimoloji TR', 'oncelik': 8},
-        {'url': f'https://www.google.com/search?q={urllib.parse.quote(sorgu)}+ansiklopedi', 'adi': 'Google Ansiklopedik', 'oncelik': 7}
+        {'url': f'https://tr.wikipedia.org/wiki/{urllib.parse.quote(sorgu)}', 'adi': 'Wikipedia (TR)'},
+        {'url': f'https://www.biyografi.info/kisi/{urllib.parse.quote(sorgu.lower().replace(" ", "-"))}', 'adi': 'Biyografi.info'},
+        {'url': f'https://www.google.com/search?q={urllib.parse.quote(sorgu)}+nedir', 'adi': 'Genel Kaynaklar'}
     ]
-    site_listesi.sort(key=lambda x: x['oncelik'], reverse=True)
     tum_bilgiler = []
-    
-    p_bar = st.progress(0)
-    for i, site in enumerate(site_listesi):
-        p_bar.progress((i + 1) / len(site_listesi))
+    for site in site_listesi:
         res = site_tara(site['url'], sorgu, site['adi'])
         if res[1]: tum_bilgiler.append(res)
-    p_bar.empty()
     return tum_bilgiler
 
 def hesap_makinesi(ifade):
     try:
-        guvenli_ifade = re.sub(r'[^0-9+\-*/(). ]', '', ifade)
-        result = eval(guvenli_ifade, {"__builtins__": {}}, {})
-        return f"**Sonuç:** {ifade} = **{result}**"
+        guvenli = re.sub(r'[^0-9+\-*/(). ]', '', ifade)
+        return f"**Sonuç:** {eval(guvenli, {'__builtins__': {}}, {})}"
     except: return "Hesaplama hatası."
 
-# --- 🔐 KİMLİK DOĞRULAMA EKRANI ---
+# --- 🔐 KİMLİK DOĞRULAMA ---
 if not st.session_state.user:
     st.markdown("<br><br>", unsafe_allow_html=True)
     _, col2, _ = st.columns([1, 1.5, 1])
     with col2:
         st.markdown("<div class='giris-kapsayici'><h1>TürkAI Analiz Merkezi</h1></div>", unsafe_allow_html=True)
-        st.markdown("<div class='not-alani'>Derin Düşünen motoru ile hızlı ve kaliteli arama</div>", unsafe_allow_html=True)
-        st.markdown(f'<a href="{APK_URL}" class="apk-buton-link">TürkAI Mobil Uygulamasını Yükle</a>', unsafe_allow_html=True)
-        
-        tab_login, tab_register, tab_guest = st.tabs(["🔒 Giriş", "📝 Kayıt", "👤 Misafir"])
-        
-        with tab_login:
-            u_in = st.text_input("Kullanıcı")
-            p_in = st.text_input("Şifre", type="password")
-            if st.button("Giriş Yap", use_container_width=True):
-                h_p = hashlib.sha256(p_in.encode()).hexdigest()
-                c.execute("SELECT * FROM users WHERE username=? AND password=?", (u_in, h_p))
-                if c.fetchone(): st.session_state.user = u_in; st.rerun()
+        tab1, tab2, tab3 = st.tabs(["🔒 Giriş", "📝 Kayıt", "👤 Misafir"])
+        with tab1:
+            u = st.text_input("Kullanıcı")
+            p = st.text_input("Şifre", type="password")
+            if st.button("Sisteme Gir", use_container_width=True):
+                h = hashlib.sha256(p.encode()).hexdigest()
+                c.execute("SELECT * FROM users WHERE username=? AND password=?", (u, h))
+                if c.fetchone(): st.session_state.user = u; st.rerun()
                 else: st.error("Hatalı!")
-
-        with tab_guest:
-            st.warning("Misafir girişi ile yapılan aramalar veritabanına kaydedilmez.")
-            if st.button("Misafir Olarak Devam Et", use_container_width=True):
-                st.session_state.user = "Misafir_User"
-                st.rerun()
-
-        with tab_register:
+        with tab3:
+            if st.button("Misafir Girişi", use_container_width=True):
+                st.session_state.user = "Misafir_User"; st.rerun()
+        with tab2:
             nu = st.text_input("Yeni Kullanıcı")
             np = st.text_input("Yeni Şifre", type="password")
-            if st.button("Kaydol", use_container_width=True):
+            if st.button("Kayıt Ol", use_container_width=True):
                 try:
                     c.execute("INSERT INTO users VALUES (?,?)", (nu, hashlib.sha256(np.encode()).hexdigest()))
-                    conn.commit(); st.success("Başarılı!")
-                except: st.error("Mevcut.")
+                    conn.commit(); st.success("Tamam!")
+                except: st.error("Mevcut!")
+        st.markdown(f'<a href="{APK_URL}" class="apk-buton-link">TürkAI Mobil Uygulamasını İndir</a>', unsafe_allow_html=True)
     st.stop()
 
-# --- 🚀 OPERASYONEL PANEL ---
+# --- 🚀 ANA PANEL ---
 with st.sidebar:
     st.markdown(f"### 🛡️ Yetkili: {st.session_state.user}")
-    if st.button("Oturumu Sonlandır", use_container_width=True):
-        st.session_state.clear(); st.rerun()
+    if st.button("Oturumu Kapat"): st.session_state.clear(); st.rerun()
     st.divider()
     m_secim = st.radio("Metodoloji:", ["V1 (Ansiklopedik)", "V2 (Global)", "V3 (Matematik)", "🤔 Derin Düşünen"])
-    
     st.divider()
     st.markdown("##### 🧮 Hızlı Hesap")
-    hesap_ifade = st.text_input("İşlem:", key="hesap_m", placeholder="45*2")
-    if hesap_ifade: st.success(hesap_makinesi(hesap_ifade))
-    
-    st.divider()
-    st.markdown("##### 📜 Geçmiş")
-    if st.session_state.user != "Misafir_User":
-        c.execute("SELECT konu, icerik FROM aramalar WHERE kullanici=? ORDER BY tarih DESC LIMIT 5", (st.session_state.user,))
-        for k, i in c.fetchall():
-            if st.button(f"📄 {k[:20]}", key=f"h_{time.time()}_{k}"):
-                st.session_state.bilgi, st.session_state.konu = i, k; st.rerun()
+    hesap = st.text_input("İşlem:")
+    if hesap: st.success(hesap_makinesi(hesap))
 
-# --- 💻 ARAŞTIRMA ALANI ---
 st.title("Araştırma Terminali")
 sorgu = st.chat_input("Veri girişi yapınız...")
 
 if sorgu:
     st.session_state.son_sorgu = sorgu
     st.session_state.kaynak_index = 0
-    with st.spinner(""):
-        thinking_placeholder = st.empty()
-        thinking_placeholder.markdown("<div class='spinner-container'><div class='spinner'></div><h3 style='color:#cc0000;'>TürkAI Analiz Ediyor...</h3></div>", unsafe_allow_html=True)
-        
-        if m_secim == "V3 (Matematik)":
-            try:
-                res = eval("".join(c for c in sorgu if c in "0123456789+-*/(). "))
-                st.session_state.bilgi = f"**Matematik Analizi:** {sorgu} = {res}"
-                st.session_state.konu = "MATEMATİK"
-            except: st.session_state.bilgi = "Hata!"
-        else:
+    if m_secim == "V3 (Matematik)":
+        st.session_state.bilgi = hesap_makinesi(sorgu)
+        st.session_state.konu = "MATEMATİK"
+    else:
+        with st.spinner("Analiz ediliyor..."):
             st.session_state.tum_kaynaklar = derin_arama_yap(sorgu)
             if st.session_state.tum_kaynaklar:
                 site, icerik = st.session_state.tum_kaynaklar[0]
                 st.session_state.bilgi = f"### 📚 Kaynak: {site}\n\n{icerik}"
                 st.session_state.konu = sorgu.upper()
-            else: st.session_state.bilgi = "Kaynak bulunamadı."
-        
-        thinking_placeholder.empty()
-        if st.session_state.user != "Misafir_User":
-            c.execute("INSERT INTO aramalar VALUES (?,?,?,?,?)", (st.session_state.user, st.session_state.konu, st.session_state.bilgi, str(datetime.datetime.now()), m_secim))
-            conn.commit()
+            else: st.session_state.bilgi = "Sonuç bulunamadı."
+    st.rerun()
 
 if st.session_state.bilgi:
     st.subheader(f"📊 Sonuç: {st.session_state.konu}")
     st.markdown(st.session_state.bilgi)
     
-    col1, col2 = st.columns(2)
-    with col1:
-        # PDF BUTONU
-        pdf_bytes = pdf_olustur(st.session_state.konu, st.session_state.bilgi)
-        st.download_button(label="📥 Analizi PDF Olarak İndir", data=pdf_bytes, file_name="TurkAI_Rapor.pdf", mime="application/pdf", use_container_width=True)
-    
-    with col2:
-        # SONRAKİ KAYNAK BUTONU (Matematik hariç)
+    c1, c2 = st.columns(2)
+    with c1:
+        pdf_data = pdf_olustur(st.session_state.konu, st.session_state.bilgi)
+        if pdf_data:
+            st.download_button("📥 Analizi PDF İndir", pdf_data, "TurkAI_Rapor.pdf", "application/pdf", use_container_width=True)
+    with c2:
         if m_secim != "V3 (Matematik)" and len(st.session_state.tum_kaynaklar) > 1:
             if st.button("🔄 Sonraki Kaynağa Geç", use_container_width=True):
                 st.session_state.kaynak_index = (st.session_state.kaynak_index + 1) % len(st.session_state.tum_kaynaklar)
@@ -327,4 +277,4 @@ if st.session_state.bilgi:
                 st.session_state.bilgi = f"### 📚 Kaynak: {site}\n\n{icerik}"
                 st.rerun()
 
-st.markdown("<div class='footer'><p>&copy; 2026 TürkAI | Kurumsal Analiz</p></div>", unsafe_allow_html=True)
+st.markdown("<div style='text-align:center; margin-top:50px; opacity:0.5;'>&copy; 2026 TürkAI</div>", unsafe_allow_html=True)
