@@ -9,20 +9,17 @@ import re
 from fpdf import FPDF 
 import time
 
-# --- ⚙️ SİSTEM VE TEMA AYARLARI ---
+# --- ⚙️ SİSTEM VE TEMA AYARLARI (DOKUNULMADI) ---
 st.set_page_config(page_title="TürkAI | Kurumsal Analiz Platformu", page_icon="🇹🇷", layout="wide")
 
-# --- 🔗 GITHUB DIREKT INDIRME LINKI ---
 APK_URL = "https://github.com/31madaracollet/TurkAI-v1/raw/refs/heads/main/4e47617eff77a24ebec8.apk"
 
-# --- 🎨 DİNAMİK TEMA (DOKUNULMADI) ---
 st.markdown("""
     <style>
     :root { --primary-red: #cc0000; }
     h1, h2, h3 { color: var(--primary-red) !important; font-weight: 700 !important; }
     .giris-kapsayici { border: 1px solid rgba(204, 0, 0, 0.3); border-radius: 12px; padding: 40px; text-align: center; }
     .apk-buton-link { display: block; width: 100%; background-color: var(--primary-red); color: white !important; text-align: center; padding: 14px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-bottom: 20px; }
-    .not-alani { background-color: rgba(204, 0, 0, 0.05); color: var(--primary-red); padding: 10px; border-radius: 8px; border: 1px dashed var(--primary-red); margin-bottom: 20px; text-align: center; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -31,7 +28,6 @@ def db_baslat():
     conn = sqlite3.connect('turkai_v220.db', check_same_thread=False)
     c = conn.cursor()
     c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT)')
-    c.execute('CREATE TABLE IF NOT EXISTS aramalar (kullanici TEXT, konu TEXT, icerik TEXT, tarih TEXT, motor TEXT)')
     conn.commit()
     return conn, c
 conn, c = db_baslat()
@@ -49,13 +45,26 @@ def yabanci_karakter_temizle(metin):
     patern = r'[^a-zA-Z0-9çğıöşüÇĞİÖŞÜ\s\.,;:!\?\(\)\-\*\+=/]'
     return re.sub(patern, '', metin)
 
+def wikipedia_temizle(metin):
+    """Vikipedi'deki o kalabalığı (kaynakça, linkler, buton isimleri) siler"""
+    # 1. Köşeli parantez içindeki kaynak numaralarını siler [1], [22] vb.
+    metin = re.sub(r'\[\d+\]', '', metin)
+    # 2. Vikipedi sistem yazılarını temizler
+    silinecekler = [
+        "İçeriğe atla", "Vikipedi, özgür ansiklopedi", "değiştir kaynağı değiştir", 
+        "Kaynakça değiştir", "Ayrıca bakınız", "Dış bağlantılar", "Gizli kategoriler",
+        "Sayfasından alınmıştır", "Kategoriler :", "Daha fazla bilgi için"
+    ]
+    for s in silinecekler:
+        metin = metin.replace(s, "")
+    # 3. Fazla boşlukları temizle
+    metin = re.sub(r'\s+', ' ', metin).strip()
+    return metin
+
 def tdk_temizle(metin):
-    """TDK'daki gereksiz kod parçalarını temizler"""
-    metin = re.sub(r'/[^ ]*', '', metin) # /pn, gos gibi kodları siler
-    metin = re.sub(r'ozelliklerListe:[^ ]*', '', metin)
-    metin = re.sub(r'anlamid:[0-9]*', '', metin)
+    metin = re.sub(r'/[^ ]*', '', metin)
     metin = re.sub(r'[a-z]*:[0-9,]*', '', metin)
-    return metin.replace("null", "").replace("  ", " ").strip()
+    return metin.replace("null", "").strip()
 
 def pdf_olustur(baslik, icerik):
     try:
@@ -73,28 +82,27 @@ def pdf_olustur(baslik, icerik):
     except: return None
 
 def site_tara_brave_style(url, sorgu, site_adi, t_out=10):
-    """Brave mantığıyla reklamları temizler ve tam metin çeker"""
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Brave/120.0.0.0'}
         response = requests.get(url, headers=headers, timeout=t_out)
         soup = BeautifulSoup(response.content, 'html.parser')
         
-        # BRAVE TARZI TEMİZLİK
-        for junk in soup(['script', 'style', 'nav', 'footer', 'header', 'aside', 'form', 'iframe']):
-            junk.decompose()
+        # Gereksiz kısımları at (Brave mantığı)
+        for junk in soup(['script', 'style', 'nav', 'footer', 'header', 'aside']): junk.decompose()
             
-        # Wikipedia özel temizlik
         if "wikipedia" in url:
-            for w_junk in soup.select('.mw-empty-elt, .infobox, .toc, .navbox'): w_junk.decompose()
-
-        raw_text = soup.get_text(separator=' ')
-        words = raw_text.split()
-        clean_text = ' '.join(words)
+            # Sadece ana metin içeriğini al, kenar çubuklarını alma
+            content = soup.find(id="mw-content-text")
+            raw_text = content.get_text(separator=' ') if content else soup.get_text()
+            final_text = wikipedia_temizle(raw_text)
+        else:
+            final_text = soup.get_text(separator=' ')
+            
+        final_text = yabanci_karakter_temizle(' '.join(final_text.split()))
         
-        if len(clean_text) > 100:
-            final_text = yabanci_karakter_temizle(clean_text)
-            if "sozluk.gov.tr" in url: final_text = tdk_temizle(final_text)
-            return (site_adi, final_text)
+        if "sozluk.gov.tr" in url: final_text = tdk_temizle(final_text)
+        
+        if len(final_text) > 100: return (site_adi, final_text)
         return (site_adi, None)
     except: return (site_adi, None)
 
@@ -122,7 +130,7 @@ with st.sidebar:
     m_secim = st.radio("Metodoloji:", ["V1 (Ansiklopedik)", "Sözlük (TDK)", "V3 (Matematik)", "🤔 Derin Düşünen"])
     st.divider()
     st.markdown("##### 🧮 Hızlı Hesap Makinesi")
-    calc_in = st.text_input("İşlem Girin (Örn: 25*4):")
+    calc_in = st.text_input("İşlem:")
     if calc_in:
         try:
             res_calc = eval(re.sub(r'[^0-9+\-*/(). ]', '', calc_in))
@@ -139,17 +147,15 @@ if sorgu:
     st.session_state.kaynak_index = 0
     q_enc = urllib.parse.quote(sorgu)
     
-    with st.spinner("Brave Filtresiyle Derin Analiz Yapılıyor..."):
+    with st.spinner("Analiz Yapılıyor..."):
         if m_secim == "Sözlük (TDK)":
             res = site_tara_brave_style(f"https://sozluk.gov.tr/gts?ara={q_enc}", sorgu, "TDK Sözlük")
             st.session_state.tum_kaynaklar = [res] if res[1] else []
-        
         elif m_secim == "V3 (Matematik)":
             try:
                 val = eval(re.sub(r'[^0-9+\-*/(). ]', '', sorgu))
-                st.session_state.tum_kaynaklar = [("Matematik Motoru", f"Analiz Sonucu: {val}")]
+                st.session_state.tum_kaynaklar = [("Matematik Motoru", f"Sonuç: {val}")]
             except: st.session_state.tum_kaynaklar = []
-            
         elif m_secim == "🤔 Derin Düşünen":
             siteler = [
                 f"https://tr.wikipedia.org/wiki/{q_enc}", f"https://www.bilgiustam.com/?s={q_enc}",
@@ -158,54 +164,37 @@ if sorgu:
                 f"https://www.etimolojiturkce.com/arama/{q_enc}", f"https://sozluk.gov.tr/gts?ara={q_enc}",
                 f"https://dergipark.org.tr/tr/search?q={q_enc}", f"https://en.wikipedia.org/wiki/{q_enc}",
                 f"https://www.britannica.com/search?query={q_enc}", f"https://www.worldhistory.org/search/?q={q_enc}",
-                f"https://plato.stanford.edu/search/searcher.py?query={q_enc}", f"https://global.britannica.com/search?query={q_enc}",
-                f"https://www.biyografya.com/arama?q={q_enc}"
+                f"https://plato.stanford.edu/search/searcher.py?query={q_enc}", f"https://www.biyografya.com/arama?q={q_enc}",
+                f"https://tr.wiktionary.org/wiki/{q_enc}"
             ]
             bulunanlar = []
-            p_bar = st.progress(0)
-            status_t = st.empty()
-            
             for i, s_url in enumerate(siteler):
-                status_t.text(f"🔍 Derin Tarama ({i+1}/15): {urllib.parse.urlparse(s_url).netloc}")
-                p_bar.progress((i+1)/len(siteler))
-                # Her siteye 10 saniye limit
                 res = site_tara_brave_style(s_url, sorgu, f"Kaynak {i+1}: {urllib.parse.urlparse(s_url).netloc}", t_out=10)
                 if res[1]: bulunanlar.append(res)
-            
             st.session_state.tum_kaynaklar = bulunanlar
-            p_bar.empty()
-            status_t.empty()
-        
-        else: # V1 Ansiklopedik
+        else: # V1
             res = site_tara_brave_style(f"https://tr.wikipedia.org/wiki/{q_enc}", sorgu, "Wikipedia")
             st.session_state.tum_kaynaklar = [res] if res[1] else []
 
         if st.session_state.tum_kaynaklar:
-            s, i = st.session_state.tum_kaynaklar[0]
-            st.session_state.bilgi, st.session_state.konu = i, sorgu.upper()
-        else:
-            st.session_state.bilgi = "Maalesef Brave filtresi bu konuda temiz bir veri bulamadı."
+            st.session_state.bilgi = st.session_state.tum_kaynaklar[0][1]
+            st.session_state.konu = sorgu.upper()
     st.rerun()
 
-# --- 📊 SONUÇ GÖSTERİMİ ---
 if st.session_state.bilgi:
     st.subheader(f"📊 Analiz Raporu: {st.session_state.konu}")
-    active_res = st.session_state.tum_kaynaklar[st.session_state.kaynak_index]
-    st.info(f"Aktif Kaynak: {active_res[0]}")
-    
+    st.info(f"Aktif Kaynak: {st.session_state.tum_kaynaklar[st.session_state.kaynak_index][0]}")
     st.markdown(f"<div style='background-color: #f9f9f9; padding: 20px; border-radius: 10px; color: #333; border-left: 5px solid #cc0000;'>{st.session_state.bilgi}</div>", unsafe_allow_html=True)
     
-    col1, col2 = st.columns(2)
-    with col1:
-        pdf_f = pdf_olustur(st.session_state.konu, st.session_state.bilgi)
-        if pdf_f: st.download_button("📥 Analizi PDF İndir", pdf_f, "TurkAI_Rapor.pdf", "application/pdf", use_container_width=True)
-    
-    with col2:
+    c1, c2 = st.columns(2)
+    with c1:
+        pdf = pdf_olustur(st.session_state.konu, st.session_state.bilgi)
+        if pdf: st.download_button("📥 PDF İndir", pdf, "Rapor.pdf", "application/pdf", use_container_width=True)
+    with c2:
         if len(st.session_state.tum_kaynaklar) > 1:
             if st.button("🔄 Yeniden Yap (Sonraki Siteye Geç)", use_container_width=True):
                 st.session_state.kaynak_index = (st.session_state.kaynak_index + 1) % len(st.session_state.tum_kaynaklar)
-                s_next, i_next = st.session_state.tum_kaynaklar[st.session_state.kaynak_index]
-                st.session_state.bilgi = i_next
+                st.session_state.bilgi = st.session_state.tum_kaynaklar[st.session_state.kaynak_index][1]
                 st.rerun()
 
-st.markdown("<div style='text-align:center; margin-top:50px; opacity:0.3;'>&copy; 2026 TürkAI | Kurumsal Analiz</div>", unsafe_allow_html=True)
+st.markdown("<div style='text-align:center; margin-top:50px; opacity:0.3;'>&copy; 2026 TürkAI</div>", unsafe_allow_html=True)
