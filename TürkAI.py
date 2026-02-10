@@ -20,7 +20,7 @@ st.markdown("""
     .giris-kapsayici { border: 1px solid rgba(204, 0, 0, 0.3); border-radius: 12px; padding: 30px; background: rgba(128, 128, 128, 0.05); }
     .apk-buton { display: block; background: var(--primary-red); color: white !important; text-align: center; padding: 12px; border-radius: 8px; text-decoration: none; font-weight: bold; margin-top: 15px; }
     .arastirma-notu { padding: 10px; border-radius: 8px; border-left: 4px solid var(--primary-red); background-color: rgba(204, 0, 0, 0.1); margin-top: 10px; font-size: 0.9rem; }
-    .sonuc-metni { padding: 20px; border-radius: 10px; border: 1px solid rgba(128, 128, 128, 0.2); line-height: 1.6; }
+    .sonuc-metni { padding: 20px; border-radius: 10px; border: 1px solid rgba(128, 128, 128, 0.2); line-height: 1.6; background: rgba(128, 128, 128, 0.02); }
     </style>
 """, unsafe_allow_html=True)
 
@@ -66,21 +66,6 @@ def pdf_olustur(baslik, icerik):
         pdf.set_font("Arial", '', 10); pdf.multi_cell(0, 5, tr_fix(icerik))
         return pdf.output(dest='S').encode('latin-1', 'ignore')
     except: return None
-
-def akiskan_yazi(metin):
-    """Yazıyı karakter karakter basar - Hata Düzeltildi"""
-    placeholder = st.empty()
-    stop_btn = st.button("🛑 Akışı Durdur", key=f"stop_btn_{st.session_state.kaynak_index}")
-    
-    full_text = ""
-    for char in metin:
-        if stop_btn:
-            placeholder.markdown(f"<div class='sonuc-metni'>{metin}</div>", unsafe_allow_html=True)
-            return
-        full_text += char
-        placeholder.markdown(f"<div class='sonuc-metni'>{full_text}▌</div>", unsafe_allow_html=True)
-        time.sleep(0.001)
-    placeholder.markdown(f"<div class='sonuc-metni'>{metin}</div>", unsafe_allow_html=True)
 
 def site_tara_brave_style(url, sorgu, site_adi):
     try:
@@ -181,8 +166,10 @@ if st.session_state.bilgi:
     active = st.session_state.tum_kaynaklar[st.session_state.kaynak_index]
     st.caption(f"📍 Aktif Kaynak: {active[0]}")
     
-    akiskan_yazi(st.session_state.bilgi)
+    # Yazı artık tak diye tek seferde veriliyor
+    st.markdown(f"<div class='sonuc-metni'>{st.session_state.bilgi}</div>", unsafe_allow_html=True)
     
+    st.divider()
     c1, c2 = st.columns(2)
     with c1:
         pdf = pdf_olustur(st.session_state.konu, st.session_state.bilgi)
