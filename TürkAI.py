@@ -10,7 +10,7 @@ import time
 
 # --- ⚙️ SİSTEM VE TEMA AYARLARI ---
 st.set_page_config(page_title="TürkAI | Kurumsal Analiz", page_icon="🇹🇷", layout="wide")
-APK_URL = "https://github.com/31madaracollet/TurkAI-v1/raw/refs/heads/main/4e47617eff77a24ebec8.apk"
+APK_URL = "https://github.com/31madaracollet/TurkAI-v1/raw/refs/heads/main/2381a04f5686fa8cefff.apk"
 
 # --- 🎨 GELİŞMİŞ CSS (KARANLIK/AYDINLIK UYUMLU) ---
 st.markdown("""
@@ -241,3 +241,4 @@ if st.session_state.bilgi:
                 st.rerun()
 
 st.markdown("<div style='text-align:center; margin-top:50px; opacity:0.3;'>© 2026 TürkAI | Kurumsal Analiz Platformu</div>", unsafe_allow_html=True)
+
