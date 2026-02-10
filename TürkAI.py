@@ -8,332 +8,138 @@ import urllib.parse
 import re
 from fpdf import FPDF
 import time
-import json
 
 # --- ⚙️ SİSTEM AYARLARI ---
-st.set_page_config(
-    page_title="TürkAI | Profesyonel Araştırma", 
-    page_icon="🇹🇷", 
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+st.set_page_config(page_title="TürkAI | Profesyonel Terminal", layout="wide")
 
-# --- 🔗 MOBİL UYGULAMA LİNKİ ---
-APK_URL = "https://github.com/31madaracollet/TurkAI-v1/raw/refs/heads/main/4e47617eff77a24ebec8.apk"
-
-# --- 🎨 TASARIM (CİDDİ & LÜKS) ---
-st.markdown("""
-    <style>
-    :root {
-        --primary-color: #800000;
-        --accent-color: #D4AF37;
-        --dark-bg: #121212;
-        --dark-card: #1E1E1E;
-        --text-light: #E0E0E0;
-    }
-    .stApp { font-family: 'Segoe UI', sans-serif; }
-    h1, h2, h3 { color: var(--primary-color) !important; font-weight: 700 !important; }
-    h1 { border-bottom: 2px solid var(--accent-color); padding-bottom: 10px; }
+# --- 🛠️ GELİŞMİŞ METİN TEMİZLEME MOTORU ---
+def profesyonel_temizle(raw_text):
+    if not raw_text: return ""
     
-    .warning-note {
-        background-color: rgba(255, 193, 7, 0.15);
-        border-left: 5px solid #ffc107;
-        padding: 15px; border-radius: 5px;
-        color: var(--text-light); font-weight: bold; margin-bottom: 20px;
-    }
+    # 1. Wikipedia ve Haber sitesi "çöplerini" ayıkla
+    cop_kelimeler = [
+        "İçeriğe atla", "Ana menüyü aç", "Ara", "Değiştir", "Kaynağı değiştir", 
+        "Giriş yap", "Kayıt ol", "Daha fazla bilgi", "Abone olmak için tıklayın",
+        "Ana sayfa", "Manşet haber", "Seçtiklerimiz", "Diğer haberler"
+    ]
+    for kelime in cop_kelimeler:
+        raw_text = raw_text.replace(kelime, "")
+
+    # 2. Köşeli parantezleri [1], [not 1] temizle
+    raw_text = re.sub(r'\[.*?\]', '', raw_text)
     
-    .stButton > button {
-        background-color: var(--primary-color) !important;
-        color: white !important;
-        border: 1px solid var(--accent-color) !important;
-    }
+    # 3. Satır başlarındaki ve sonundaki boşlukları buda, boş satırları sil
+    lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
     
-    /* Sonuç Kartı Tasarımı */
-    .result-card {
-        background-color: #f8f9fa; border: 1px solid #ddd; padding: 25px;
-        border-radius: 8px; margin-top: 20px; color: #333;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    }
-    .source-badge {
-        background-color: var(--accent-color); color: #000;
-        padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; font-weight: bold;
-        margin-bottom: 10px; display: inline-block;
-    }
+    # 4. BOŞLUK DÜZELTME: Çoklu boşlukları ve satırları teke indir
+    clean_text = "\n\n".join(lines) # Paragraf arası çift satır
+    clean_text = re.sub(r' +', ' ', clean_text) # Kelime arası tek boşluk
     
-    @media (prefers-color-scheme: dark) {
-        .result-card { background-color: var(--dark-card); border-color: #333; color: #E0E0E0; }
-        .warning-note { color: #E0E0E0; }
-    }
-    </style>
-""", unsafe_allow_html=True)
+    return clean_text
 
-# --- 💾 VERİTABANI ---
-def db_baslat():
-    conn = sqlite3.connect('turkai_v4.db', check_same_thread=False)
-    c = conn.cursor()
-    c.execute('CREATE TABLE IF NOT EXISTS users (username TEXT PRIMARY KEY, password TEXT)')
-    conn.commit()
-    return conn, c
-
-conn, c = db_baslat()
-
-# --- 🔑 SESSION STATE ---
-if "user" not in st.session_state: st.session_state.user = None
-if "bilgi" not in st.session_state: st.session_state.bilgi = None
-if "konu" not in st.session_state: st.session_state.konu = ""
-if "aktif_site_index" not in st.session_state: st.session_state.aktif_site_index = 0
-if "arama_yapildi" not in st.session_state: st.session_state.arama_yapildi = False
-if "url_listesi" not in st.session_state: st.session_state.url_listesi = []
-if "hesap_sonuc" not in st.session_state: st.session_state.hesap_sonuc = ""
-
-# --- 🛠 YARDIMCI FONKSİYONLAR ---
-
-def tr_karakter_duzelt(text):
-    """PDF için Türkçe karakter düzeltmesi."""
-    if not text: return ""
-    text = str(text)
-    mapping = {'İ': 'I', 'ı': 'i', 'Ş': 'S', 'ş': 's', 'Ğ': 'G', 'ğ': 'g', 'Ü': 'U', 'ü': 'u', 'Ö': 'O', 'ö': 'o', 'Ç': 'C', 'ç': 'c', 'â': 'a', 'î': 'i', 'û': 'u'}
-    for k, v in mapping.items(): text = text.replace(k, v)
-    return text.encode('latin-1', 'replace').decode('latin-1')
-
-def tdk_parser(json_data):
-    """TDK JSON verisini okunaklı hale getirir."""
+def tdk_temizle(json_data):
     try:
-        text_output = ""
-        if isinstance(json_data, list) and len(json_data) > 0:
-            madde = json_data[0]
-            baslik = madde.get('madde', '')
-            text_output += f"📚 TDK SÖZLÜK: {baslik.upper()}\n\n"
-            
-            if 'anlamlarListe' in madde:
-                for i, anlam in enumerate(madde['anlamlarListe']):
-                    tanim = anlam.get('anlam', '')
-                    text_output += f"{i+1}. {tanim}\n"
-                    if 'orneklerListe' in anlam:
-                        ornek = anlam['orneklerListe'][0].get('ornek', '')
-                        text_output += f"   ➔ Örnek: '{ornek}'\n"
-                    text_output += "\n"
-            
-            if 'atasozu' in madde:
-                text_output += "💡 ATASÖZLERİ & DEYİMLER:\n"
-                for ata in madde['atasozu']:
-                    text_output += f"- {ata.get('madde')}\n"
-        return text_output
-    except:
-        return "TDK verisi çözümlenemedi."
+        res = []
+        for madde in json_data:
+            res.append(f"📚 {madde.get('madde', '').upper()}")
+            for anl in madde.get('anlamlarListe', []):
+                res.append(f"• {anl.get('anlam', '')}")
+                if 'orneklerListe' in anl:
+                    for o in anl['orneklerListe']:
+                        res.append(f"  👉 '{o.get('ornek')}'")
+        return "\n".join(res)
+    except: return "Sözlük verisi ayrıştırılamadı."
 
-def site_tara_brave(url):
-    """Gelişmiş Tarayıcı ve Temizleyici (HTML & JSON)"""
+# --- 🌐 VERİ ÇEKME MOTORU ---
+def veri_getir(url):
     try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept-Language': 'tr-TR,tr;q=0.9'
-        }
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Brave/120.0.0.0'}
+        response = requests.get(url, headers=headers, timeout=10)
         
-        response = requests.get(url, headers=headers, timeout=8)
-        
-        # 1. TDK ÖZEL AYRIŞTIRMA (JSON)
+        # TDK kontrolü
         if "sozluk.gov.tr" in url:
-            try:
-                return tdk_parser(response.json())
-            except:
-                pass # JSON değilse devam et
+            return tdk_temizle(response.json())
 
-        # 2. STANDART HTML AYRIŞTIRMA
-        if response.status_code == 200:
-            soup = BeautifulSoup(response.content, 'html.parser')
-            
-            # Gereksiz elementleri sil (Reklam, menü, script)
-            blacklist = ["script", "style", "nav", "footer", "form", "iframe", "div.ads", "div.reklam", "header", ".mw-editsection", ".reference"]
-            for tag in blacklist:
-                for element in soup.select(tag):
-                    element.decompose()
-
-            # İÇERİK SEÇİCİLER (Siteye göre odaklan)
-            content_text = ""
-            
-            if "wikipedia.org" in url:
-                # Sadece makale içeriğini al
-                content_div = soup.find(id="mw-content-text")
-                if content_div:
-                    content_text = content_div.get_text(separator='\n')
-                    # Vikipedi temizliği: [1], [değiştir] vb. sil
-                    content_text = re.sub(r'\[\d+\]', '', content_text)
-                    content_text = re.sub(r'\[değiştir \| kaynağı değiştir\]', '', content_text)
-            
-            elif "islamansiklopedisi" in url:
-                # TDV Arama sayfası gürültüsü temizliği
-                results = soup.find_all(class_="search-result-item")
-                if results:
-                    content_text = "🔎 İSLAM ANSİKLOPEDİSİ SONUÇLARI:\n\n"
-                    for res in results[:3]: # İlk 3 sonucu getir
-                        baslik = res.find("h3").get_text(strip=True) if res.find("h3") else ""
-                        ozet = res.find("p").get_text(strip=True) if res.find("p") else ""
-                        content_text += f"📌 {baslik}\n{ozet}\n\n"
-                else:
-                     content_text = soup.get_text(separator='\n')
-            
-            else:
-                # Genel Haber Siteleri
-                content_text = soup.get_text(separator='\n')
-
-            # Genel Temizlik
-            lines = [line.strip() for line in content_text.splitlines() if line.strip()]
-            clean_text = '\n\n'.join(lines)
-            
-            # İslam Ansiklopedisi arama arayüzü çöplerini (Alfabe vb.) temizle
-            if "islamansiklopedisi" in url:
-                clean_text = re.sub(r'x\s+"[\d\s\w\n]+ABC', '', clean_text)
-            
-            if len(clean_text) < 150: return None
-            return clean_text[:4000] # Çok uzun metinleri kes
-            
-    except Exception as e:
-        return None
-    return None
-
-def pdf_olustur_pro(baslik, icerik):
-    """Hatasız PDF Oluşturucu."""
-    try:
-        pdf = FPDF()
-        pdf.add_page()
-        pdf.set_font("Arial", 'B', 16)
-        pdf.set_text_color(128, 0, 0)
-        pdf.cell(0, 10, tr_karakter_duzelt("TURKAI ANALIZ RAPORU"), ln=True, align='C')
-        pdf.line(10, 25, 200, 25)
-        pdf.ln(20)
-        pdf.set_text_color(0, 0, 0)
-        pdf.set_font("Arial", 'B', 12)
-        pdf.cell(40, 10, tr_karakter_duzelt(f"Konu: {baslik}"), ln=True)
-        pdf.cell(40, 10, tr_karakter_duzelt(f"Tarih: {datetime.datetime.now().strftime('%d.%m.%Y')}"), ln=True)
-        pdf.ln(10)
-        pdf.set_font("Arial", '', 11)
-        pdf.multi_cell(0, 6, tr_karakter_duzelt(icerik))
-        pdf.set_y(-30)
-        pdf.set_font("Arial", 'I', 8)
-        pdf.cell(0, 10, tr_karakter_duzelt("TurkAI Profesyonel Arastirma Terminali - 2026"), align='C')
-        return pdf.output(dest='S').encode('latin-1')
-    except: return None
-
-# --- 🔐 GİRİŞ EKRANI ---
-if not st.session_state.user:
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        st.markdown("<br><br>", unsafe_allow_html=True)
-        st.markdown("""
-        <div style='text-align: center; border: 2px solid #800000; padding: 40px; border-radius: 10px; background-color: var(--dark-card);'>
-            <h1 style='color: #800000; font-size: 3rem;'>🇹🇷 TÜRKAI</h1>
-            <p style='color: #888; font-size: 1.2rem;'>Gelişmiş Biyografi & Haber Terminali</p>
-            <hr style='border-color: #D4AF37;'>
-        </div>
-        """, unsafe_allow_html=True)
+        soup = BeautifulSoup(response.content, 'html.parser')
         
-        tab1, tab2 = st.tabs(["GİRİŞ YAP", "KAYIT OL"])
-        with tab1:
-            u = st.text_input("Kullanıcı Adı")
-            p = st.text_input("Şifre", type="password")
-            c1, c2 = st.columns(2)
-            with c1:
-                if st.button("Sisteme Gir", use_container_width=True):
-                    h = hashlib.sha256(p.encode()).hexdigest()
-                    c.execute("SELECT * FROM users WHERE username=? AND password=?", (u, h))
-                    if c.fetchone(): st.session_state.user = u; st.rerun()
-                    else: st.error("Hatalı bilgiler.")
-            with c2:
-                if st.button("Misafir Girişi", use_container_width=True, type="secondary"):
-                    st.session_state.user = "Misafir"; st.rerun()
-        with tab2:
-            nu = st.text_input("Yeni Kullanıcı")
-            np = st.text_input("Yeni Şifre", type="password")
-            if st.button("Kayıt Ol", use_container_width=True):
-                try: c.execute("INSERT INTO users VALUES (?,?)", (nu, hashlib.sha256(np.encode()).hexdigest())); conn.commit(); st.success("Kayıt başarılı.");
-                except: st.error("Kullanıcı adı alınmış.")
-        st.stop()
+        # Gereksiz HTML etiketlerini tamamen kaldır
+        for tag in ["script", "style", "nav", "footer", "header", "aside", "form", "button"]:
+            for element in soup.find_all(tag):
+                element.decompose()
 
-# --- 🖥️ ANA ARAYÜZ ---
-with st.sidebar:
-    st.markdown("### 🎛️ KONTROL PANELİ")
-    st.write(f"👤 **Aktif:** {st.session_state.user}")
-    if st.button("Çıkış Yap"): st.session_state.user = None; st.rerun()
-    st.divider()
-    st.subheader("🧮 Hesap Makinesi")
-    calc_exp = st.text_input("İşlem", key="calc_input")
-    if st.button("Hesapla"):
-        try: st.session_state.hesap_sonuc = str(eval(calc_exp))
-        except: st.session_state.hesap_sonuc = "Hata"
-    if st.session_state.hesap_sonuc: st.info(f"Sonuç: {st.session_state.hesap_sonuc}")
-    st.divider()
-    st.markdown(f'<a href="{APK_URL}"><button style="width:100%;">📱 Android Uygulama</button></a>', unsafe_allow_html=True)
+        # Ana içeriğe odaklan (Makale veya Ana Gövde)
+        article = soup.find('article') or soup.find('main') or soup.body
+        text = article.get_text(separator=' ')
+        
+        return profesyonel_temizle(text)
+    except:
+        return None
 
+# --- 🔑 SESSION & GİRİŞ ---
+if "user" not in st.session_state: st.session_state.user = None
+
+if not st.session_state.user:
+    st.markdown("<h1 style='text-align:center;'>🇹🇷 TürkAI Giriş</h1>", unsafe_allow_html=True)
+    if st.button("Misafir Olarak Başla", use_container_width=True):
+        st.session_state.user = "Misafir"
+        st.rerun()
+    st.stop()
+
+# --- 🖥️ ANA EKRAN ---
 st.title("PROFESYONEL ARAŞTIRMA TERMİNALİ")
-st.markdown("""<div class='warning-note'>⚠️ Not: Araştırmak istediğiniz konunun ANAHTAR KELİMESİNİ yazınız. (Örn: Türk kimdir?❌ Türk✅)</div>""", unsafe_allow_html=True)
+st.markdown("> **Not:** Aramak istediğiniz konunun **ANAHTAR KELİMESİNİ** yazınız. (Örn: Türk✅)")
 
-col_sorgu, col_motor = st.columns([3, 1])
-with col_sorgu: sorgu = st.text_input("Araştırma Konusu:", placeholder="Örn: Sucuk, Fatih Sultan Mehmet, Enflasyon...")
-with col_motor: motor_tipi = st.selectbox("Motor Seçimi", ["🚀 Ansiklopedik (V1)", "🌍 Gündem & Haber (V2)"])
+col_arama, col_motor = st.columns([3, 1])
+with col_arama:
+    sorgu = st.text_input("Araştırma Konusu:", placeholder="Örn: Sucuk, Fatih Sultan Mehmet...")
+with col_motor:
+    motor = st.selectbox("Motor", ["🚀 Ansiklopedi (V1)", "🗞️ Gündem/Haber (V2)"])
 
 if st.button("ARAŞTIRMAYI BAŞLAT", type="primary", use_container_width=True):
-    if not sorgu: st.warning("Lütfen bir konu giriniz.")
-    else:
-        st.session_state.konu = sorgu.strip()
-        st.session_state.arama_yapildi = True
-        st.session_state.aktif_site_index = 0
-        st.session_state.bilgi = None
-        q = urllib.parse.quote(st.session_state.konu)
-        
-        if "Ansiklopedik" in motor_tipi:
-            # V1: TDK, Vikipedi, İslam Ansiklopedisi, Biyografi
-            st.session_state.url_listesi = [
-                f"https://sozluk.gov.tr/gts?ara={q}", # TDK JSON
+    if sorgu:
+        q = urllib.parse.quote(sorgu)
+        st.session_state.sorgu_kelime = sorgu
+        if "Ansiklopedi" in motor:
+            st.session_state.kaynaklar = [
+                f"https://sozluk.gov.tr/gts?ara={q}",
                 f"https://tr.wikipedia.org/wiki/{q}",
-                f"https://islamansiklopedisi.org.tr/ara?q={q}",
-                f"https://www.biyografi.info/kisi/{q}",
-                f"https://www.turkcebilgi.com/{q}"
+                f"https://islamansiklopedisi.org.tr/ara?q={q}"
             ]
         else:
-            # V2: Güncel Haberler ve Gündem
-            st.session_state.url_listesi = [
+            st.session_state.kaynaklar = [
                 f"https://www.bbc.com/turkce/search?q={q}",
                 f"https://www.trthaber.com/haber/ara/?q={q}",
-                f"https://www.ensonhaber.com/arama?q={q}",
-                f"https://www.hurriyet.com.tr/arama/?q={q}",
-                f"https://tr.wikipedia.org/wiki/{q}" # Yedek olarak ansiklopedi
+                f"https://www.ensonhaber.com/arama?q={q}"
             ]
-        st.rerun()
+        st.session_state.idx = 0
+        st.session_state.arama_aktif = True
 
-if st.session_state.arama_yapildi:
-    urls = st.session_state.url_listesi
-    idx = st.session_state.aktif_site_index
+if st.session_state.get("arama_aktif"):
+    kaynaklar = st.session_state.kaynaklar
+    i = st.session_state.idx
     
-    if idx < len(urls):
-        current_url = urls[idx]
-        domain_name = urllib.parse.urlparse(current_url).netloc.replace("www.", "")
+    if i < len(kaynaklar):
+        url = kaynaklar[i]
+        st.info(f"🔍 Kaynak taranıyor: {urllib.parse.urlparse(url).netloc}")
         
-        st.info(f"🔎 {motor_tipi} | Kaynak: {domain_name} taranıyor...")
-        
-        with st.spinner('Veriler temizleniyor ve düzenleniyor...'):
-            bulunan_veri = site_tara_brave(current_url)
+        sonuc = veri_getir(url)
+        if sonuc:
+            st.markdown(f"### 📄 {st.session_state.sorgu_kelime.upper()} - Analiz Raporu")
+            st.markdown(f"<div style='background:#f0f2f6; color:#111; padding:20px; border-radius:10px; border-left:5px solid #800000; white-space: pre-wrap;'>{sonuc[:5000]}</div>", unsafe_allow_html=True)
             
-            if bulunan_veri:
-                st.session_state.bilgi = bulunan_veri
-                st.markdown(f"""
-                <div class='result-card'>
-                    <div class='source-badge'>📌 Kaynak: {domain_name.upper()}</div>
-                    <div style='max-height: 500px; overflow-y: auto; white-space: pre-wrap; font-size: 1.05rem;'>{bulunan_veri}</div>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                col_pdf, col_next = st.columns(2)
-                with col_pdf:
-                    pdf_data = pdf_olustur_pro(st.session_state.konu, bulunan_veri)
-                    if pdf_data: st.download_button("📄 PDF Olarak İndir", pdf_data, f"TurkAI_{st.session_state.konu}.pdf", "application/pdf", use_container_width=True)
-                with col_next:
-                    if st.button("🔄 Bu Kaynağı Beğenmedim, Sıradaki", use_container_width=True):
-                        st.session_state.aktif_site_index += 1; st.rerun()
-            else:
-                time.sleep(0.5); st.session_state.aktif_site_index += 1; st.rerun()
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("🔄 Bu Kaynağı Beğenmedim, Sıradakine Geç", use_container_width=True):
+                    st.session_state.idx += 1
+                    st.rerun()
+            with c2:
+                st.success("Veri başarıyla temizlendi ve optimize edildi.")
+        else:
+            st.session_state.idx += 1
+            st.rerun()
     else:
-        st.error("❌ Tüm kaynaklar tarandı. Daha fazla sonuç yok.")
-        if st.button("Sıfırla"): st.session_state.arama_yapildi = False; st.session_state.aktif_site_index = 0; st.rerun()
+        st.warning("Tüm kaynaklar bitti. Başka bir anahtar kelime deneyebilirsin.")
 
-st.markdown("<div class='footer'><p>&copy; 2026 TürkAI | Gelişmiş Haber & Araştırma</p></div>", unsafe_allow_html=True)
+# --- 📊 FOOTER ---
+st.markdown("---")
+st.markdown("<center><b>2026 © TürkAI Profesyonel Araştırma Sistemi</b><br>Boşluk Temizleme Modülü: AKTİF</center>", unsafe_allow_html=True)
