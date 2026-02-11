@@ -1,0 +1,14 @@
+name: TurkAI_Asla_Uyuma
+on:
+  schedule:
+    - cron: '*/30 * * * *' # Her 30 dakikada bir siteyi dürter
+  workflow_dispatch:      # Canın isteyince manuel çalıştırman için buton çıkarır
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Siteye Istek At
+        run: |
+          curl -I https://turkai-v1-uhcnvmrgcdjmxx2aeczqqc.streamlit.app/
+          echo "Dürtme işlemi başarılı!"
