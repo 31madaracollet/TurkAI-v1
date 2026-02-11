@@ -3,3 +3,4 @@ requests
 beautifulsoup4
 fpdf
 duckduckgo-search>=5.0.0
+pillow
