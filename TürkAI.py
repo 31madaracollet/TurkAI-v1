@@ -8,66 +8,24 @@ import re
 from fpdf import FPDF 
 import time
 import os
-from PIL import Image # Görsel işleme için eklendi
+from PIL import Image
+import pytesseract # Resimden yazı okumak için
 
 # --- ⚙️ SİSTEM VE TEMA AYARLARI ---
 st.set_page_config(page_title="TürkAI | Kurumsal Analiz", page_icon="🇹🇷", layout="wide")
 APK_URL = "https://github.com/31madaracollet/TurkAI-v1/raw/refs/heads/main/2381a04f5686fa8cefff.apk"
 
-# --- 🎨 GELİŞMİŞ CSS (KARANLIK/AYDINLIK UYUMLU) ---
+# --- 🎨 GELİŞMİŞ CSS ---
 st.markdown("""
     <style>
     :root { --primary-red: #cc0000; --hover-red: #990000; }
-    
-    /* Başlıklar */
     h1, h2, h3 { color: var(--primary-red) !important; }
-    
-    /* Giriş Paneli */
-    .giris-kapsayici { 
-        border: 1px solid rgba(204, 0, 0, 0.3); 
-        border-radius: 15px; 
-        padding: 30px; 
-        background: rgba(128, 128, 128, 0.05);
-        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-    }
-    
-    /* Progress Bar Rengi */
+    .giris-kapsayici { border: 1px solid rgba(204, 0, 0, 0.3); border-radius: 15px; padding: 30px; background: rgba(128, 128, 128, 0.05); box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
     .stProgress > div > div > div > div { background-image: linear-gradient(to right, #800000, #cc0000); }
-    
-    /* APK Buton */
-    .apk-buton { 
-        display: block; 
-        background: var(--primary-red); 
-        color: white !important; 
-        text-align: center; 
-        padding: 12px; 
-        border-radius: 8px; 
-        text-decoration: none; 
-        font-weight: bold; 
-        margin-top: 15px;
-        transition: 0.3s;
-    }
+    .apk-buton { display: block; background: var(--primary-red); color: white !important; text-align: center; padding: 12px; border-radius: 8px; text-decoration: none; font-weight: bold; margin-top: 15px; transition: 0.3s; }
     .apk-buton:hover { background: var(--hover-red); transform: scale(1.02); }
-    
-    /* Araştırma Notu */
-    .arastirma-notu {
-        padding: 15px;
-        border-radius: 10px;
-        border-left: 5px solid var(--primary-red);
-        background-color: rgba(204, 0, 0, 0.05);
-        margin: 10px 0 20px 0;
-        font-size: 0.95rem;
-    }
-    
-    /* Sonuç Kutusu */
-    .sonuc-metni {
-        padding: 25px; 
-        border-radius: 12px; 
-        border: 1px solid rgba(128, 128, 128, 0.2);
-        line-height: 1.7;
-        background: rgba(128, 128, 128, 0.02);
-        font-size: 1.05rem;
-    }
+    .arastirma-notu { padding: 15px; border-radius: 10px; border-left: 5px solid var(--primary-red); background-color: rgba(204, 0, 0, 0.05); margin: 10px 0 20px 0; font-size: 0.95rem; }
+    .sonuc-metni { padding: 25px; border-radius: 12px; border: 1px solid rgba(128, 128, 128, 0.2); line-height: 1.7; background: rgba(128, 128, 128, 0.02); font-size: 1.05rem; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -87,7 +45,7 @@ if "konu" not in st.session_state: st.session_state.konu = ""
 if "kaynak_index" not in st.session_state: st.session_state.kaynak_index = 0
 if "tum_kaynaklar" not in st.session_state: st.session_state.tum_kaynaklar = []
 
-# --- 🔧 YARDIMCI FONKSİYONLAR (DOKUNULMADI) ---
+# --- 🔧 YARDIMCI FONKSİYONLAR ---
 def yabanci_karakter_temizle(metin):
     if not metin: return ""
     return re.sub(r'[^a-zA-Z0-9çğıöşüÇĞİÖŞÜ\s\.,;:!\?\(\)\-\*\+=/]', '', metin)
@@ -130,17 +88,15 @@ def site_tara_brave_style(url, sorgu, site_adi):
         return (site_adi, final) if len(final) > 100 else (site_adi, None)
     except: return (site_adi, None)
 
-# --- 🔐 GİRİŞ & KAYIT SİSTEMİ ---
+# --- 🔐 GİRİŞ & KAYIT ---
 if not st.session_state.user:
     _, col2, _ = st.columns([1, 1.8, 1])
     with col2:
         st.markdown("<div class='giris-kapsayici'><h1>🇹🇷 TürkAI V1</h1>", unsafe_allow_html=True)
-        
-        # 🟢 İSTEK: Giriş Notu Eklendi
+        # GİRİŞ NOTU KORUNDU
         st.warning("⚠️ Bu bir yapay zeka değil, araştırma botudur.")
         
         tab_in, tab_up, tab_m = st.tabs(["🔑 Giriş Yap", "📝 Kayıt Ol", "👤 Misafir"])
-        
         with tab_in:
             u = st.text_input("Kullanıcı Adı", key="login_u")
             p = st.text_input("Şifre", type="password", key="login_p")
@@ -149,7 +105,6 @@ if not st.session_state.user:
                 c.execute("SELECT * FROM users WHERE username=? AND password=?", (u, h))
                 if c.fetchone(): st.session_state.user = u; st.rerun()
                 else: st.error("Hatalı kullanıcı adı veya şifre!")
-                
         with tab_up:
             nu = st.text_input("Yeni Kullanıcı Adı", key="reg_u")
             np = st.text_input("Yeni Şifre", type="password", key="reg_p")
@@ -160,26 +115,22 @@ if not st.session_state.user:
                         conn.commit(); st.success("Kayıt başarılı! Şimdi giriş yapabilirsiniz.")
                     except: st.error("Bu kullanıcı adı zaten alınmış.")
                 else: st.warning("Lütfen tüm alanları doldurun.")
-                
         with tab_m:
             if st.button("Yetkisiz (Misafir) Girişi", use_container_width=True): 
                 st.session_state.user = "Misafir"; st.rerun()
-        
         st.markdown(f'<a href="{APK_URL}" class="apk-buton">TürkAI Mobile APK İndir</a>', unsafe_allow_html=True)
     st.stop()
 
 # --- 🚀 ANA PANEL ---
 with st.sidebar:
     st.markdown(f"### 🛡️ Yetkili: {st.session_state.user}")
-    
-    # 🟢 İSTEK: Yeni Motor (Görsel Yükle) Eklendi
+    # GÖRSEL YÜKLE MODU AKTİF
     m_secim = st.radio("Sorgu Metodu:", ["V1 (Ansiklopedik)", "Sözlük (TDK)", "V3 (Matematik)", "🤔 Derin Düşünen", "🖼️ Görselden PDF"])
-    
     st.divider()
     st.markdown("##### 🧮 Hızlı Hesap")
     calc = st.text_input("İşlem örn: (5*5)/2")
     if calc:
-        # 🟢 İSTEK: Matematik Harf Kontrolü
+        # MATEMATİK UYARISI KORUNDU
         if re.search(r'[a-zA-Z]', calc):
             st.error("Lütfen sadece işlem yazınız.")
         else:
@@ -190,51 +141,65 @@ with st.sidebar:
 
 st.title("Araştırma Terminali")
 
-# 🟢 İSTEK: Görselden PDF Motoru Mantığı
+# 🟡 GÖRSEL OCR MODU (Resimden Yazı Alma)
 if m_secim == "🖼️ Görselden PDF":
-    st.markdown("<div class='arastirma-notu'><b>Mod:</b> Görseli PDF dosyasını dönüştürme aracı.</div>", unsafe_allow_html=True)
-    st.subheader("🖼️ Görsel Yükle ve Dönüştür")
+    st.markdown("<div class='arastirma-notu'><b>Mod:</b> Görseldeki yazıları okuyup PDF'e aktarma aracı (OCR).</div>", unsafe_allow_html=True)
+    st.subheader("🖼️ Görseldeki Yazıyı Çıkar")
     
-    yuklenen_dosya = st.file_uploader("Bir görsel seçin (JPG, PNG)", type=['png', 'jpg', 'jpeg'])
+    yuklenen_dosya = st.file_uploader("Okunacak görseli seçin (JPG, PNG)", type=['png', 'jpg', 'jpeg'])
     
     if yuklenen_dosya:
         image = Image.open(yuklenen_dosya)
-        st.image(image, caption='Yüklenen Görsel', width=400)
+        st.image(image, caption='Analiz Edilen Görsel', width=400)
         
-        if st.button("📄 Görseli PDF'e Çevir", use_container_width=True):
-            try:
-                # Geçici dosya oluştur
-                temp_path = "temp_gorsel.jpg"
-                rgb_im = image.convert('RGB')
-                rgb_im.save(temp_path)
-                
-                pdf = FPDF()
-                pdf.add_page()
-                # A4 boyutuna göre ortala
-                pdf.image(temp_path, x=10, y=10, w=190)
-                
-                pdf_data = pdf.output(dest='S').encode('latin-1')
-                
-                st.download_button(
-                    label="📥 PDF Dosyasını İndir",
-                    data=pdf_data,
-                    file_name="TurkAI_Gorsel.pdf",
-                    mime="application/pdf",
-                    use_container_width=True
-                )
-                # Temizlik
-                if os.path.exists(temp_path): os.remove(temp_path)
-                
-            except Exception as e:
-                st.error(f"Dönüştürme hatası: {e}")
+        if st.button("📄 Yazıları Çıkar ve PDF Yap", use_container_width=True):
+            with st.spinner('Yazılar okunuyor, lütfen bekleyin...'):
+                try:
+                    # OCR İŞLEMİ (Resimden Yazı Okuma)
+                    extracted_text = pytesseract.image_to_string(image, lang='tur')
+                    
+                    if not extracted_text.strip():
+                        st.error("Görselde okunabilir bir yazı bulunamadı!")
+                    else:
+                        st.success("Yazı başarıyla okundu!")
+                        st.text_area("Okunan Metin:", extracted_text, height=200)
+                        
+                        # PDF OLUŞTURMA
+                        pdf = FPDF()
+                        pdf.add_page()
+                        
+                        # Türkçe karakter düzeltme fonksiyonu (PDF için)
+                        def tr_fix(text):
+                            chars = {'ı':'i','İ':'I','ü':'u','Ü':'U','ö':'o','Ö':'O','ç':'c','Ç':'C','ş':'s','Ş':'S','ğ':'g','Ğ':'G'}
+                            for k, v in chars.items(): text = text.replace(k, v)
+                            return text.encode('latin-1', 'ignore').decode('latin-1')
+
+                        pdf.set_font("Arial", 'B', 14)
+                        pdf.cell(0, 10, tr_fix("TurkAI Gorsel Analiz Raporu"), ln=True, align='C')
+                        pdf.ln(10)
+                        
+                        pdf.set_font("Arial", '', 11)
+                        # Okunan metni yaz
+                        pdf.multi_cell(0, 6, tr_fix(extracted_text))
+                        
+                        pdf_data = pdf.output(dest='S').encode('latin-1')
+                        
+                        st.download_button(
+                            label="📥 Okunan Metni PDF İndir",
+                            data=pdf_data,
+                            file_name="TurkAI_OCR_Rapor.pdf",
+                            mime="application/pdf",
+                            use_container_width=True
+                        )
+                except Exception as e:
+                    st.error(f"OCR Hatası: {e}. (packages.txt dosyasını ekledin mi?)")
 
 else:
-    # Diğer modlar için standart arayüz
     st.markdown("<div class='arastirma-notu'><b>Not:</b> Araştırmak istediğiniz konunun <b>ANAHTAR KELİMESİNİ</b> yazınız.</div>", unsafe_allow_html=True)
     sorgu = st.chat_input("Analiz edilecek konuyu buraya yazın...")
 
     if sorgu:
-        # 🟢 İSTEK: Matematik Motoru için Harf Kontrolü (Ana Panel)
+        # ANA EKRAN MATEMATİK UYARISI KORUNDU
         if m_secim == "V3 (Matematik)" and re.search(r'[a-zA-Z]', sorgu):
             st.error("Lütfen sadece işlem yazınız.")
         else:
@@ -276,15 +241,12 @@ else:
                 status.empty(); p_bar.empty()
             st.rerun()
 
-    # --- 📊 RAPORLAMA (Sadece araştırma yapıldığında görünür) ---
+    # --- 📊 RAPORLAMA ---
     if st.session_state.bilgi:
         st.subheader(f"📊 Rapor: {st.session_state.konu}")
         active = st.session_state.tum_kaynaklar[st.session_state.kaynak_index]
         st.info(f"📍 Aktif Kaynak: {active[0]}")
-        
-        # Sonuç kutusu
         st.markdown(f"<div class='sonuc-metni'>{st.session_state.bilgi}</div>", unsafe_allow_html=True)
-        
         st.divider()
         c1, c2 = st.columns(2)
         with c1:
@@ -297,5 +259,4 @@ else:
                     st.session_state.bilgi = st.session_state.tum_kaynaklar[st.session_state.kaynak_index][1]
                     st.rerun()
 
-# 🟢 İSTEK: Telif Simgesi Kaldırıldı, Yazı Kaldı
 st.markdown("<div style='text-align:center; margin-top:50px; opacity:0.3;'>2026 TürkAI | Kurumsal Analiz Platformu</div>", unsafe_allow_html=True)
