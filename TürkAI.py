@@ -7,6 +7,8 @@ import urllib.parse
 import re 
 from fpdf import FPDF 
 import time
+import os
+from PIL import Image # Görsel işleme için eklendi
 
 # --- ⚙️ SİSTEM VE TEMA AYARLARI ---
 st.set_page_config(page_title="TürkAI | Kurumsal Analiz", page_icon="🇹🇷", layout="wide")
@@ -133,6 +135,10 @@ if not st.session_state.user:
     _, col2, _ = st.columns([1, 1.8, 1])
     with col2:
         st.markdown("<div class='giris-kapsayici'><h1>🇹🇷 TürkAI V1</h1>", unsafe_allow_html=True)
+        
+        # 🟢 İSTEK: Giriş Notu Eklendi
+        st.warning("⚠️ Bu bir yapay zeka değil, araştırma botudur.")
+        
         tab_in, tab_up, tab_m = st.tabs(["🔑 Giriş Yap", "📝 Kayıt Ol", "👤 Misafir"])
         
         with tab_in:
@@ -165,80 +171,131 @@ if not st.session_state.user:
 # --- 🚀 ANA PANEL ---
 with st.sidebar:
     st.markdown(f"### 🛡️ Yetkili: {st.session_state.user}")
-    m_secim = st.radio("Sorgu Metodu:", ["V1 (Ansiklopedik)", "Sözlük (TDK)", "V3 (Matematik)", "🤔 Derin Düşünen"])
+    
+    # 🟢 İSTEK: Yeni Motor (Görsel Yükle) Eklendi
+    m_secim = st.radio("Sorgu Metodu:", ["V1 (Ansiklopedik)", "Sözlük (TDK)", "V3 (Matematik)", "🤔 Derin Düşünen", "🖼️ Görselden PDF"])
+    
     st.divider()
     st.markdown("##### 🧮 Hızlı Hesap")
     calc = st.text_input("İşlem örn: (5*5)/2")
     if calc:
-        try: st.success(f"Sonuç: {eval(re.sub(r'[^0-9+\-*/(). ]', '', calc))}")
-        except: st.error("Hatalı işlem!")
+        # 🟢 İSTEK: Matematik Harf Kontrolü
+        if re.search(r'[a-zA-Z]', calc):
+            st.error("Lütfen sadece işlem yazınız.")
+        else:
+            try: st.success(f"Sonuç: {eval(re.sub(r'[^0-9+\-*/(). ]', '', calc))}")
+            except: st.error("Hatalı işlem!")
     st.divider()
     if st.button("Oturumu Kapat", use_container_width=True): st.session_state.clear(); st.rerun()
 
 st.title("Araştırma Terminali")
-st.markdown("<div class='arastirma-notu'><b>Not:</b> Araştırmak istediğiniz konunun <b>ANAHTAR KELİMESİNİ</b> yazınız.</div>", unsafe_allow_html=True)
 
-sorgu = st.chat_input("Analiz edilecek konuyu buraya yazın...")
-
-if sorgu:
-    st.session_state.son_sorgu = sorgu
-    st.session_state.kaynak_index = 0
-    q_enc = urllib.parse.quote(sorgu)
+# 🟢 İSTEK: Görselden PDF Motoru Mantığı
+if m_secim == "🖼️ Görselden PDF":
+    st.markdown("<div class='arastirma-notu'><b>Mod:</b> Görseli PDF dosyasını dönüştürme aracı.</div>", unsafe_allow_html=True)
+    st.subheader("🖼️ Görsel Yükle ve Dönüştür")
     
-    with st.container():
-        st.write("### 🔍 Analiz Süreci")
-        p_bar = st.progress(0)
-        status = st.empty()
+    yuklenen_dosya = st.file_uploader("Bir görsel seçin (JPG, PNG)", type=['png', 'jpg', 'jpeg'])
+    
+    if yuklenen_dosya:
+        image = Image.open(yuklenen_dosya)
+        st.image(image, caption='Yüklenen Görsel', width=400)
         
-        if m_secim == "🤔 Derin Düşünen":
-            siteler = [f"https://tr.wikipedia.org/wiki/{q_enc}", f"https://www.bilgiustam.com/?s={q_enc}", f"https://www.turkcebilgi.com/{q_enc}", f"https://sozluk.gov.tr/gts?ara={q_enc}", f"https://www.nedir.com/{q_enc}", f"https://www.biyografi.info/ara?k={q_enc}", f"https://islamansiklopedisi.org.tr/ara?q={q_enc}", f"https://dergipark.org.tr/tr/search?q={q_enc}", f"https://en.wikipedia.org/wiki/{q_enc}", f"https://www.britannica.com/search?query={q_enc}", f"https://www.worldhistory.org/search/?q={q_enc}", f"https://plato.stanford.edu/search/searcher.py?query={q_enc}", f"https://www.biyografya.com/arama?q={q_enc}", f"https://tr.wiktionary.org/wiki/{q_enc}", f"https://www.etimolojiturkce.com/arama/{q_enc}"]
-            bulunanlar = []
-            for i, url in enumerate(siteler):
-                status.info(f"Tarama yapılıyor: {urllib.parse.urlparse(url).netloc} ({i+1}/15)")
-                p_bar.progress((i+1)/len(siteler))
-                res = site_tara_brave_style(url, sorgu, f"Kaynak {i+1}: {urllib.parse.urlparse(url).netloc}")
-                if res[1]: bulunanlar.append(res)
-            st.session_state.tum_kaynaklar = bulunanlar
-        elif m_secim == "Sözlük (TDK)":
-            p_bar.progress(50); res = site_tara_brave_style(f"https://sozluk.gov.tr/gts?ara={q_enc}", sorgu, "TDK")
-            st.session_state.tum_kaynaklar = [res] if res[1] else []; p_bar.progress(100)
-        elif m_secim == "V3 (Matematik)":
+        if st.button("📄 Görseli PDF'e Çevir", use_container_width=True):
             try:
-                res_val = eval(re.sub(r'[^0-9+\-*/(). ]', '', sorgu))
-                st.session_state.tum_kaynaklar = [("Matematik Motoru", f"İşlem Sonucu: {res_val}")]
-                p_bar.progress(100)
-            except: st.session_state.tum_kaynaklar = []
-        else: # V1
-            p_bar.progress(50); res = site_tara_brave_style(f"https://tr.wikipedia.org/wiki/{q_enc}", sorgu, "V1 (Wikipedia)")
-            st.session_state.tum_kaynaklar = [res] if res[1] else []; p_bar.progress(100)
+                # Geçici dosya oluştur
+                temp_path = "temp_gorsel.jpg"
+                rgb_im = image.convert('RGB')
+                rgb_im.save(temp_path)
+                
+                pdf = FPDF()
+                pdf.add_page()
+                # A4 boyutuna göre ortala
+                pdf.image(temp_path, x=10, y=10, w=190)
+                
+                pdf_data = pdf.output(dest='S').encode('latin-1')
+                
+                st.download_button(
+                    label="📥 PDF Dosyasını İndir",
+                    data=pdf_data,
+                    file_name="TurkAI_Gorsel.pdf",
+                    mime="application/pdf",
+                    use_container_width=True
+                )
+                # Temizlik
+                if os.path.exists(temp_path): os.remove(temp_path)
+                
+            except Exception as e:
+                st.error(f"Dönüştürme hatası: {e}")
 
-        if st.session_state.tum_kaynaklar:
-            st.session_state.bilgi = st.session_state.tum_kaynaklar[0][1]
-            st.session_state.konu = sorgu.upper()
-        else: st.session_state.bilgi = "Üzgünüm, bu konuda yeterli veri bulunamadı."
-        status.empty(); p_bar.empty()
-    st.rerun()
+else:
+    # Diğer modlar için standart arayüz
+    st.markdown("<div class='arastirma-notu'><b>Not:</b> Araştırmak istediğiniz konunun <b>ANAHTAR KELİMESİNİ</b> yazınız.</div>", unsafe_allow_html=True)
+    sorgu = st.chat_input("Analiz edilecek konuyu buraya yazın...")
 
-# --- 📊 RAPORLAMA ---
-if st.session_state.bilgi:
-    st.subheader(f"📊 Rapor: {st.session_state.konu}")
-    active = st.session_state.tum_kaynaklar[st.session_state.kaynak_index]
-    st.info(f"📍 Aktif Kaynak: {active[0]}")
-    
-    # Sonuç kutusu
-    st.markdown(f"<div class='sonuc-metni'>{st.session_state.bilgi}</div>", unsafe_allow_html=True)
-    
-    st.divider()
-    c1, c2 = st.columns(2)
-    with c1:
-        pdf = pdf_olustur(st.session_state.konu, st.session_state.bilgi)
-        if pdf: st.download_button("📥 PDF Olarak İndir", pdf, f"TurkAI_{st.session_state.konu}.pdf", use_container_width=True)
-    with c2:
-        if len(st.session_state.tum_kaynaklar) > 1:
-            if st.button("🔄 Yeniden Yap (Sonraki Kaynağa Geç)", use_container_width=True):
-                st.session_state.kaynak_index = (st.session_state.kaynak_index + 1) % len(st.session_state.tum_kaynaklar)
-                st.session_state.bilgi = st.session_state.tum_kaynaklar[st.session_state.kaynak_index][1]
-                st.rerun()
+    if sorgu:
+        # 🟢 İSTEK: Matematik Motoru için Harf Kontrolü (Ana Panel)
+        if m_secim == "V3 (Matematik)" and re.search(r'[a-zA-Z]', sorgu):
+            st.error("Lütfen sadece işlem yazınız.")
+        else:
+            st.session_state.son_sorgu = sorgu
+            st.session_state.kaynak_index = 0
+            q_enc = urllib.parse.quote(sorgu)
+            
+            with st.container():
+                st.write("### 🔍 Analiz Süreci")
+                p_bar = st.progress(0)
+                status = st.empty()
+                
+                if m_secim == "🤔 Derin Düşünen":
+                    siteler = [f"https://tr.wikipedia.org/wiki/{q_enc}", f"https://www.bilgiustam.com/?s={q_enc}", f"https://www.turkcebilgi.com/{q_enc}", f"https://sozluk.gov.tr/gts?ara={q_enc}", f"https://www.nedir.com/{q_enc}", f"https://www.biyografi.info/ara?k={q_enc}", f"https://islamansiklopedisi.org.tr/ara?q={q_enc}", f"https://dergipark.org.tr/tr/search?q={q_enc}", f"https://en.wikipedia.org/wiki/{q_enc}", f"https://www.britannica.com/search?query={q_enc}", f"https://www.worldhistory.org/search/?q={q_enc}", f"https://plato.stanford.edu/search/searcher.py?query={q_enc}", f"https://www.biyografya.com/arama?q={q_enc}", f"https://tr.wiktionary.org/wiki/{q_enc}", f"https://www.etimolojiturkce.com/arama/{q_enc}"]
+                    bulunanlar = []
+                    for i, url in enumerate(siteler):
+                        status.info(f"Tarama yapılıyor: {urllib.parse.urlparse(url).netloc} ({i+1}/15)")
+                        p_bar.progress((i+1)/len(siteler))
+                        res = site_tara_brave_style(url, sorgu, f"Kaynak {i+1}: {urllib.parse.urlparse(url).netloc}")
+                        if res[1]: bulunanlar.append(res)
+                    st.session_state.tum_kaynaklar = bulunanlar
+                elif m_secim == "Sözlük (TDK)":
+                    p_bar.progress(50); res = site_tara_brave_style(f"https://sozluk.gov.tr/gts?ara={q_enc}", sorgu, "TDK")
+                    st.session_state.tum_kaynaklar = [res] if res[1] else []; p_bar.progress(100)
+                elif m_secim == "V3 (Matematik)":
+                    try:
+                        res_val = eval(re.sub(r'[^0-9+\-*/(). ]', '', sorgu))
+                        st.session_state.tum_kaynaklar = [("Matematik Motoru", f"İşlem Sonucu: {res_val}")]
+                        p_bar.progress(100)
+                    except: st.session_state.tum_kaynaklar = []
+                else: # V1
+                    p_bar.progress(50); res = site_tara_brave_style(f"https://tr.wikipedia.org/wiki/{q_enc}", sorgu, "V1 (Wikipedia)")
+                    st.session_state.tum_kaynaklar = [res] if res[1] else []; p_bar.progress(100)
 
-st.markdown("<div style='text-align:center; margin-top:50px; opacity:0.3;'>© 2026 TürkAI | Kurumsal Analiz Platformu</div>", unsafe_allow_html=True)
+                if st.session_state.tum_kaynaklar:
+                    st.session_state.bilgi = st.session_state.tum_kaynaklar[0][1]
+                    st.session_state.konu = sorgu.upper()
+                else: st.session_state.bilgi = "Üzgünüm, bu konuda yeterli veri bulunamadı."
+                status.empty(); p_bar.empty()
+            st.rerun()
 
+    # --- 📊 RAPORLAMA (Sadece araştırma yapıldığında görünür) ---
+    if st.session_state.bilgi:
+        st.subheader(f"📊 Rapor: {st.session_state.konu}")
+        active = st.session_state.tum_kaynaklar[st.session_state.kaynak_index]
+        st.info(f"📍 Aktif Kaynak: {active[0]}")
+        
+        # Sonuç kutusu
+        st.markdown(f"<div class='sonuc-metni'>{st.session_state.bilgi}</div>", unsafe_allow_html=True)
+        
+        st.divider()
+        c1, c2 = st.columns(2)
+        with c1:
+            pdf = pdf_olustur(st.session_state.konu, st.session_state.bilgi)
+            if pdf: st.download_button("📥 PDF Olarak İndir", pdf, f"TurkAI_{st.session_state.konu}.pdf", use_container_width=True)
+        with c2:
+            if len(st.session_state.tum_kaynaklar) > 1:
+                if st.button("🔄 Yeniden Yap (Sonraki Kaynağa Geç)", use_container_width=True):
+                    st.session_state.kaynak_index = (st.session_state.kaynak_index + 1) % len(st.session_state.tum_kaynaklar)
+                    st.session_state.bilgi = st.session_state.tum_kaynaklar[st.session_state.kaynak_index][1]
+                    st.rerun()
+
+# 🟢 İSTEK: Telif Simgesi Kaldırıldı, Yazı Kaldı
+st.markdown("<div style='text-align:center; margin-top:50px; opacity:0.3;'>2026 TürkAI | Kurumsal Analiz Platformu</div>", unsafe_allow_html=True)
