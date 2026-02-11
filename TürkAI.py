@@ -10,7 +10,7 @@ import time
 import os
 from PIL import Image
 import pytesseract # Resimden yazı okumak için
-
+pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
 # --- ⚙️ SİSTEM VE TEMA AYARLARI ---
 st.set_page_config(page_title="TürkAI | Kurumsal Analiz", page_icon="🇹🇷", layout="wide")
 APK_URL = "https://github.com/31madaracollet/TurkAI-v1/raw/refs/heads/main/2381a04f5686fa8cefff.apk"
@@ -260,3 +260,4 @@ else:
                     st.rerun()
 
 st.markdown("<div style='text-align:center; margin-top:50px; opacity:0.3;'>2026 TürkAI | Kurumsal Analiz Platformu</div>", unsafe_allow_html=True)
+
