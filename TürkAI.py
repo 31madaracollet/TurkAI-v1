@@ -5,6 +5,7 @@ import sqlite3
 import hashlib
 import urllib.parse
 import re 
+import json # JSON verileri ayıklamak için eklendi
 from fpdf import FPDF 
 import time
 import os
@@ -46,14 +47,38 @@ if "konu" not in st.session_state: st.session_state.konu = ""
 if "kaynak_index" not in st.session_state: st.session_state.kaynak_index = 0
 if "tum_kaynaklar" not in st.session_state: st.session_state.tum_kaynaklar = []
 
-# --- 🔧 YARDIMCI FONKSİYONLAR (GÜNCELLENDİ) ---
-def yabanci_karakter_temizle(metin):
-    if not metin: return ""
-    # Teknik kodları ve gereksiz JSON kalıntılarını temizle
-    metin = re.sub(r'\w+id:\d+,?', '', metin)
-    metin = re.sub(r'kac:\d+,?', '', metin)
-    metin = re.sub(r'cesit:\d+,?', '', metin)
-    return re.sub(r'[^a-zA-Z0-9çğıöşüÇĞİÖŞÜ\s\.,;:!\?\(\)\-\*\+=/]', '', metin)
+# --- 🔧 AKILLI TEMİZLİK FONKSİYONLARI ---
+
+def tdk_json_coz(ham_metin):
+    """TDK'dan gelen karmaşık JSON kodlarını temizleyip sadece anlamları alır."""
+    try:
+        veri = json.loads(ham_metin)
+        anlamlar = []
+        for madde in veri:
+            if "anlamlarListe" in madde:
+                for kalem in madde["anlamlarListe"]:
+                    anlamlar.append(f"• {kalem['anlam']}")
+            if "atasozu" in madde:
+                for ata in madde["atasozu"]:
+                    anlamlar.append(f"ℹ️ Atasözü/Deyim: {ata['madde']}")
+        return "\n".join(anlamlar) if anlamlar else "Anlam bulunamadı."
+    except:
+        return "Veri ayıklanamadı."
+
+def icerik_filtrele(soup):
+    """Sitedeki menü, link ve reklamları silip ana metni bırakır."""
+    # Menü ve gereksiz kısımları sil
+    for gereksiz in soup(['nav', 'footer', 'header', 'aside', 'script', 'style', 'noscript', 'form']):
+        gereksiz.decompose()
+    
+    # Bilgiustam gibi sitelerdeki 'Benzer Yazılar', 'Yorumlar' gibi alanları sınıf isimlerinden yakala
+    for div in soup.find_all('div', class_=re.compile(r'menu|footer|sidebar|comment|related|nav|social|header')):
+        div.decompose()
+
+    metin = soup.get_text(separator='\n')
+    # Çok kısa satırları (genelde link veya buton yazısıdır) eliyoruz
+    temiz_satirlar = [s.strip() for s in metin.splitlines() if len(s.strip()) > 35] 
+    return "\n\n".join(temiz_satirlar)
 
 def wikipedia_temizle(metin):
     metin = re.sub(r'\[\d+\]', '', metin)
@@ -61,23 +86,13 @@ def wikipedia_temizle(metin):
     for s in silinecekler: metin = metin.replace(s, "")
     return re.sub(r'\s+', ' ', metin).strip()
 
-def tdk_temizle(metin):
-    # TDK'daki o karmaşık "anlamid, maddeid" yapılarını tamamen süpüren regex
-    temiz = re.findall(r'anlam:"([^"]+)"', metin)
-    if temiz:
-        return " | ".join(temiz)
-    # Eğer regex bulamazsa klasik temizlik yap
-    metin = re.sub(r'[a-z]+id:\d+', '', metin)
-    metin = re.sub(r'/[^ ]*', '', metin)
-    return metin.replace("null", "").replace("  ", " ").strip()
-
 def pdf_olustur(baslik, icerik):
     try:
         pdf = FPDF()
         pdf.add_page()
         def tr_fix(text):
             chars = {'ı':'i','İ':'I','ü':'u','Ü':'U','ö':'o','Ö':'O','ç':'c','Ç':'C','ş':'s','Ş':'S','ğ':'g','Ğ':'G'}
-            for k, v in chars.items(): text = text.replace(k, v)
+            for k, v in chars.items(): text = str(text).replace(k, v)
             return text.encode('latin-1', 'ignore').decode('latin-1')
         pdf.set_font("Arial", 'B', 16); pdf.cell(0, 10, tr_fix(baslik), ln=True, align='C')
         pdf.set_font("Arial", '', 10); pdf.multi_cell(0, 5, tr_fix(icerik))
@@ -86,21 +101,22 @@ def pdf_olustur(baslik, icerik):
 
 def site_tara_brave_style(url, sorgu, site_adi):
     try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Brave/120.0.0.0'}
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0'}
         response = requests.get(url, headers=headers, timeout=10)
-        soup = BeautifulSoup(response.content, 'html.parser')
-        for j in soup(['script', 'style', 'nav', 'footer', 'header']): j.decompose()
         
         if "sozluk.gov.tr" in url:
-            final = tdk_temizle(response.text)
-        elif "wikipedia" in url:
+            final = tdk_json_coz(response.text)
+            return (site_adi, final)
+            
+        soup = BeautifulSoup(response.content, 'html.parser')
+        
+        if "wikipedia" in url:
             content = soup.find(id="mw-content-text")
             final = wikipedia_temizle(content.get_text() if content else soup.get_text())
         else:
-            final = soup.get_text(separator=' ')
-            final = yabanci_karakter_temizle(' '.join(final.split()))
+            final = icerik_filtrele(soup)
             
-        return (site_adi, final) if len(final) > 10 else (site_adi, None)
+        return (site_adi, final) if len(final) > 20 else (site_adi, None)
     except: return (site_adi, None)
 
 # --- 🔐 GİRİŞ & KAYIT ---
@@ -125,9 +141,8 @@ if not st.session_state.user:
                 if nu and np:
                     try:
                         c.execute("INSERT INTO users VALUES (?,?)", (nu, hashlib.sha256(np.encode()).hexdigest()))
-                        conn.commit(); st.success("Kayıt başarılı! Şimdi giriş yapabilirsiniz.")
+                        conn.commit(); st.success("Kayıt başarılı!")
                     except: st.error("Bu kullanıcı adı zaten alınmış.")
-                else: st.warning("Lütfen tüm alanları doldurun.")
         with tab_m:
             if st.button("Yetkisiz (Misafir) Girişi", use_container_width=True): 
                 st.session_state.user = "Misafir"; st.rerun()
@@ -152,36 +167,27 @@ with st.sidebar:
 
 st.title("Araştırma Terminali")
 
-# 🟡 GÖRSEL OCR MODU
+# 🟡 GÖRSEL OCR MODU (Değişmedi)
 if m_secim == "🖼️ Görselden PDF":
     st.markdown("<div class='arastirma-notu'><b>Mod:</b> Görseldeki yazıları okuyup PDF'e aktarma aracı (OCR).</div>", unsafe_allow_html=True)
-    st.subheader("🖼️ Görseldeki Yazıyı Çıkar")
-    yuklenen_dosya = st.file_uploader("Okunacak görseli seçin (JPG, PNG)", type=['png', 'jpg', 'jpeg'])
+    yuklenen_dosya = st.file_uploader("Okunacak görseli seçin", type=['png', 'jpg', 'jpeg'])
     if yuklenen_dosya:
         image = Image.open(yuklenen_dosya)
-        st.image(image, caption='Analiz Edilen Görsel', width=400)
+        st.image(image, caption='Görsel', width=400)
         if st.button("📄 Yazıları Çıkar ve PDF Yap", use_container_width=True):
-            with st.spinner('Yazılar okunuyor...'):
+            with st.spinner('Okunuyor...'):
                 try:
                     extracted_text = pytesseract.image_to_string(image, lang='tur')
-                    if not extracted_text.strip(): st.error("Yazı bulunamadı!")
-                    else:
-                        st.success("Yazı okundu!")
+                    if extracted_text.strip():
                         st.text_area("Okunan Metin:", extracted_text, height=200)
-                        pdf = FPDF(); pdf.add_page()
-                        def tr_fix(text):
-                            chars = {'ı':'i','İ':'I','ü':'u','Ü':'U','ö':'o','Ö':'O','ç':'c','Ç':'C','ş':'s','Ş':'S','ğ':'g','Ğ':'G'}
-                            for k, v in chars.items(): text = text.replace(k, v)
-                            return text.encode('latin-1', 'ignore').decode('latin-1')
-                        pdf.set_font("Arial", 'B', 14); pdf.cell(0, 10, tr_fix("TurkAI Gorsel Analiz"), ln=True, align='C')
-                        pdf.ln(10); pdf.set_font("Arial", '', 11); pdf.multi_cell(0, 6, tr_fix(extracted_text))
-                        pdf_data = pdf.output(dest='S').encode('latin-1')
-                        st.download_button(label="📥 PDF İndir", data=pdf_data, file_name="TurkAI_OCR.pdf", mime="application/pdf", use_container_width=True)
-                except Exception as e: st.error(f"OCR Hatası: {e}")
+                        pdf_data = pdf_olustur("OCR SONUCU", extracted_text)
+                        st.download_button("📥 PDF İndir", pdf_data, "TurkAI_OCR.pdf", "application/pdf")
+                except Exception as e: st.error(f"Hata: {e}")
 
 else:
-    st.markdown("<div class='arastirma-notu'><b>Not:</b> Anahtar kelimeyi yazınız.</div>", unsafe_allow_html=True)
+    st.markdown("<div class='arastirma-notu'><b>Not:</b> Araştırmak istediğiniz konuyu yazınız.</div>", unsafe_allow_html=True)
     sorgu = st.chat_input("Analiz edilecek konu...")
+
     if sorgu:
         if m_secim == "V3 (Matematik)" and re.search(r'[a-zA-Z]', sorgu):
             st.error("Lütfen sadece işlem yazınız.")
@@ -189,30 +195,32 @@ else:
             st.session_state.son_sorgu = sorgu
             st.session_state.kaynak_index = 0
             q_enc = urllib.parse.quote(sorgu)
+            
             with st.container():
                 st.write("### 🔍 Analiz Süreci")
                 p_bar = st.progress(0); status = st.empty()
+                
                 if m_secim == "🤔 Derin Düşünen":
-                    siteler = [f"https://tr.wikipedia.org/wiki/{q_enc}", f"https://www.bilgiustam.com/?s={q_enc}", f"https://www.turkcebilgi.com/{q_enc}", f"https://sozluk.gov.tr/gts?ara={q_enc}", f"https://www.nedir.com/{q_enc}"]
+                    siteler = [f"https://tr.wikipedia.org/wiki/{q_enc}", f"https://www.bilgiustam.com/?s={q_enc}", f"https://www.turkcebilgi.com/{q_enc}"]
                     bulunanlar = []
                     for i, url in enumerate(siteler):
-                        status.info(f"Tarama: {urllib.parse.urlparse(url).netloc}")
-                        p_bar.progress((i+1)/len(siteler))
+                        status.info(f"Tarama: {url}")
                         res = site_tara_brave_style(url, sorgu, f"Kaynak {i+1}")
                         if res[1]: bulunanlar.append(res)
+                        p_bar.progress((i+1)/len(siteler))
                     st.session_state.tum_kaynaklar = bulunanlar
                 elif m_secim == "Sözlük (TDK)":
                     res = site_tara_brave_style(f"https://sozluk.gov.tr/gts?ara={q_enc}", sorgu, "TDK")
                     st.session_state.tum_kaynaklar = [res] if res[1] else []
                 elif m_secim == "V3 (Matematik)":
-                    try: 
+                    try:
                         res_val = eval(re.sub(r'[^0-9+\-*/(). ]', '', sorgu))
                         st.session_state.tum_kaynaklar = [("Matematik", f"Sonuç: {res_val}")]
                     except: st.session_state.tum_kaynaklar = []
                 else:
                     res = site_tara_brave_style(f"https://tr.wikipedia.org/wiki/{q_enc}", sorgu, "Wikipedia")
                     st.session_state.tum_kaynaklar = [res] if res[1] else []
-                
+
                 if st.session_state.tum_kaynaklar:
                     st.session_state.bilgi = st.session_state.tum_kaynaklar[0][1]
                     st.session_state.konu = sorgu.upper()
@@ -228,10 +236,10 @@ else:
         c1, c2 = st.columns(2)
         with c1:
             pdf = pdf_olustur(st.session_state.konu, st.session_state.bilgi)
-            if pdf: st.download_button("📥 PDF İndir", pdf, f"TurkAI_{st.session_state.konu}.pdf", use_container_width=True)
+            if pdf: st.download_button("📥 PDF Olarak İndir", pdf, f"TurkAI_{st.session_state.konu}.pdf", use_container_width=True)
         with c2:
             if len(st.session_state.tum_kaynaklar) > 1:
-                if st.button("🔄 Sonraki Kaynak", use_container_width=True):
+                if st.button("🔄 Sonraki Kaynağa Geç", use_container_width=True):
                     st.session_state.kaynak_index = (st.session_state.kaynak_index + 1) % len(st.session_state.tum_kaynaklar)
                     st.session_state.bilgi = st.session_state.tum_kaynaklar[st.session_state.kaynak_index][1]
                     st.rerun()
