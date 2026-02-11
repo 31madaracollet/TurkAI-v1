@@ -11,6 +11,7 @@ import os
 from PIL import Image
 import pytesseract # Resimden yazı okumak için
 pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
+
 # --- ⚙️ SİSTEM VE TEMA AYARLARI ---
 st.set_page_config(page_title="TürkAI | Kurumsal Analiz", page_icon="🇹🇷", layout="wide")
 APK_URL = "https://github.com/31madaracollet/TurkAI-v1/raw/refs/heads/main/2381a04f5686fa8cefff.apk"
@@ -78,13 +79,34 @@ def site_tara_brave_style(url, sorgu, site_adi):
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Brave/120.0.0.0'}
         response = requests.get(url, headers=headers, timeout=10)
         soup = BeautifulSoup(response.content, 'html.parser')
-        for j in soup(['script', 'style', 'nav', 'footer', 'header']): j.decompose()
+        
+        # --- 🛡️ ÖZEL AYIKLAMA VE SÜZGEÇ SİSTEMİ ---
+        # 1. Genel Gürültü Temizliği
+        for j in soup(['script', 'style', 'nav', 'footer', 'header', 'aside', 'form', 'button']): j.decompose()
+        
+        # 2. Siteye Özel Temizlik (Gereksiz yazılar)
+        if "bilgiustam.com" in url:
+            for m in soup.find_all(class_=re.compile(r'menu|sidebar|nav-links|header')): m.decompose()
+        
+        if "islamansiklopedisi" in url:
+            for stop in soup.find_all(text=re.compile(r'Sonraki Madde|Önceki Madde|İçerik sayfası')):
+                if stop.parent: stop.parent.decompose()
+
+        # 3. Metin Çıkarma
         if "wikipedia" in url:
             content = soup.find(id="mw-content-text")
             final = wikipedia_temizle(content.get_text() if content else soup.get_text())
-        else: final = soup.get_text(separator=' ')
+        else:
+            final = soup.get_text(separator=' ')
+        
         final = yabanci_karakter_temizle(' '.join(final.split()))
         if "sozluk.gov.tr" in url: final = tdk_temizle(final)
+
+        # --- 🎯 KRİTİK SÜZGEÇ: Sorgu Kelimesi Metinde Var mı? ---
+        # Sorgu kelimesi (küçük harfe çevrilerek) metinde geçmiyorsa siteyi iptal et
+        if sorgu.lower() not in final.lower():
+            return (site_adi, None)
+
         return (site_adi, final) if len(final) > 100 else (site_adi, None)
     except: return (site_adi, None)
 
@@ -93,9 +115,7 @@ if not st.session_state.user:
     _, col2, _ = st.columns([1, 1.8, 1])
     with col2:
         st.markdown("<div class='giris-kapsayici'><h1>🇹🇷 TürkAI V1</h1>", unsafe_allow_html=True)
-        # GİRİŞ NOTU KORUNDU
         st.warning("⚠️ Bu bir yapay zeka değil, araştırma botudur.")
-        
         tab_in, tab_up, tab_m = st.tabs(["🔑 Giriş Yap", "📝 Kayıt Ol", "👤 Misafir"])
         with tab_in:
             u = st.text_input("Kullanıcı Adı", key="login_u")
@@ -124,13 +144,11 @@ if not st.session_state.user:
 # --- 🚀 ANA PANEL ---
 with st.sidebar:
     st.markdown(f"### 🛡️ Yetkili: {st.session_state.user}")
-    # GÖRSEL YÜKLE MODU AKTİF
     m_secim = st.radio("Sorgu Metodu:", ["V1 (Ansiklopedik)", "Sözlük (TDK)", "V3 (Matematik)", "🤔 Derin Düşünen", "🖼️ Görselden PDF"])
     st.divider()
     st.markdown("##### 🧮 Hızlı Hesap")
     calc = st.text_input("İşlem örn: (5*5)/2")
     if calc:
-        # MATEMATİK UYARISI KORUNDU
         if re.search(r'[a-zA-Z]', calc):
             st.error("Lütfen sadece işlem yazınız.")
         else:
@@ -141,65 +159,33 @@ with st.sidebar:
 
 st.title("Araştırma Terminali")
 
-# 🟡 GÖRSEL OCR MODU (Resimden Yazı Alma)
+# 🟡 GÖRSEL OCR MODU
 if m_secim == "🖼️ Görselden PDF":
     st.markdown("<div class='arastirma-notu'><b>Mod:</b> Görseldeki yazıları okuyup PDF'e aktarma aracı (OCR).</div>", unsafe_allow_html=True)
     st.subheader("🖼️ Görseldeki Yazıyı Çıkar")
-    
     yuklenen_dosya = st.file_uploader("Okunacak görseli seçin (JPG, PNG)", type=['png', 'jpg', 'jpeg'])
-    
     if yuklenen_dosya:
         image = Image.open(yuklenen_dosya)
         st.image(image, caption='Analiz Edilen Görsel', width=400)
-        
         if st.button("📄 Yazıları Çıkar ve PDF Yap", use_container_width=True):
             with st.spinner('Yazılar okunuyor, lütfen bekleyin...'):
                 try:
-                    # OCR İŞLEMİ (Resimden Yazı Okuma)
                     extracted_text = pytesseract.image_to_string(image, lang='tur')
-                    
                     if not extracted_text.strip():
                         st.error("Görselde okunabilir bir yazı bulunamadı!")
                     else:
                         st.success("Yazı başarıyla okundu!")
                         st.text_area("Okunan Metin:", extracted_text, height=200)
-                        
-                        # PDF OLUŞTURMA
-                        pdf = FPDF()
-                        pdf.add_page()
-                        
-                        # Türkçe karakter düzeltme fonksiyonu (PDF için)
-                        def tr_fix(text):
-                            chars = {'ı':'i','İ':'I','ü':'u','Ü':'U','ö':'o','Ö':'O','ç':'c','Ç':'C','ş':'s','Ş':'S','ğ':'g','Ğ':'G'}
-                            for k, v in chars.items(): text = text.replace(k, v)
-                            return text.encode('latin-1', 'ignore').decode('latin-1')
-
-                        pdf.set_font("Arial", 'B', 14)
-                        pdf.cell(0, 10, tr_fix("TurkAI Gorsel Analiz Raporu"), ln=True, align='C')
-                        pdf.ln(10)
-                        
-                        pdf.set_font("Arial", '', 11)
-                        # Okunan metni yaz
-                        pdf.multi_cell(0, 6, tr_fix(extracted_text))
-                        
-                        pdf_data = pdf.output(dest='S').encode('latin-1')
-                        
-                        st.download_button(
-                            label="📥 Okunan Metni PDF İndir",
-                            data=pdf_data,
-                            file_name="TurkAI_OCR_Rapor.pdf",
-                            mime="application/pdf",
-                            use_container_width=True
-                        )
+                        pdf_data = pdf_olustur("Görsel Analiz Raporu", extracted_text)
+                        st.download_button(label="📥 Okunan Metni PDF İndir", data=pdf_data, file_name="TurkAI_OCR_Rapor.pdf", mime="application/pdf", use_container_width=True)
                 except Exception as e:
-                    st.error(f"OCR Hatası: {e}. (packages.txt dosyasını ekledin mi?)")
+                    st.error(f"OCR Hatası: {e}")
 
 else:
     st.markdown("<div class='arastirma-notu'><b>Not:</b> Araştırmak istediğiniz konunun <b>ANAHTAR KELİMESİNİ</b> yazınız.</div>", unsafe_allow_html=True)
     sorgu = st.chat_input("Analiz edilecek konuyu buraya yazın...")
 
     if sorgu:
-        # ANA EKRAN MATEMATİK UYARISI KORUNDU
         if m_secim == "V3 (Matematik)" and re.search(r'[a-zA-Z]', sorgu):
             st.error("Lütfen sadece işlem yazınız.")
         else:
@@ -209,10 +195,10 @@ else:
             
             with st.container():
                 st.write("### 🔍 Analiz Süreci")
-                p_bar = st.progress(0)
-                status = st.empty()
+                p_bar = st.progress(0); status = st.empty()
                 
                 if m_secim == "🤔 Derin Düşünen":
+                    # Orijinal 15 site listesi eksiksiz korunmuştur
                     siteler = [f"https://tr.wikipedia.org/wiki/{q_enc}", f"https://www.bilgiustam.com/?s={q_enc}", f"https://www.turkcebilgi.com/{q_enc}", f"https://sozluk.gov.tr/gts?ara={q_enc}", f"https://www.nedir.com/{q_enc}", f"https://www.biyografi.info/ara?k={q_enc}", f"https://islamansiklopedisi.org.tr/ara?q={q_enc}", f"https://dergipark.org.tr/tr/search?q={q_enc}", f"https://en.wikipedia.org/wiki/{q_enc}", f"https://www.britannica.com/search?query={q_enc}", f"https://www.worldhistory.org/search/?q={q_enc}", f"https://plato.stanford.edu/search/searcher.py?query={q_enc}", f"https://www.biyografya.com/arama?q={q_enc}", f"https://tr.wiktionary.org/wiki/{q_enc}", f"https://www.etimolojiturkce.com/arama/{q_enc}"]
                     bulunanlar = []
                     for i, url in enumerate(siteler):
@@ -221,23 +207,27 @@ else:
                         res = site_tara_brave_style(url, sorgu, f"Kaynak {i+1}: {urllib.parse.urlparse(url).netloc}")
                         if res[1]: bulunanlar.append(res)
                     st.session_state.tum_kaynaklar = bulunanlar
+
                 elif m_secim == "Sözlük (TDK)":
                     p_bar.progress(50); res = site_tara_brave_style(f"https://sozluk.gov.tr/gts?ara={q_enc}", sorgu, "TDK")
                     st.session_state.tum_kaynaklar = [res] if res[1] else []; p_bar.progress(100)
+
                 elif m_secim == "V3 (Matematik)":
                     try:
                         res_val = eval(re.sub(r'[^0-9+\-*/(). ]', '', sorgu))
                         st.session_state.tum_kaynaklar = [("Matematik Motoru", f"İşlem Sonucu: {res_val}")]
                         p_bar.progress(100)
                     except: st.session_state.tum_kaynaklar = []
-                else: # V1
+
+                else: # V1 (Ansiklopedik)
                     p_bar.progress(50); res = site_tara_brave_style(f"https://tr.wikipedia.org/wiki/{q_enc}", sorgu, "V1 (Wikipedia)")
                     st.session_state.tum_kaynaklar = [res] if res[1] else []; p_bar.progress(100)
 
                 if st.session_state.tum_kaynaklar:
                     st.session_state.bilgi = st.session_state.tum_kaynaklar[0][1]
                     st.session_state.konu = sorgu.upper()
-                else: st.session_state.bilgi = "Üzgünüm, bu konuda yeterli veri bulunamadı."
+                else: 
+                    st.session_state.bilgi = f"Üzgünüm, '{sorgu}' kelimesini içeren güvenilir bir kaynak bulunamadı."
                 status.empty(); p_bar.empty()
             st.rerun()
 
