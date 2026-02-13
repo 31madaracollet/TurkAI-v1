@@ -8,6 +8,7 @@ import re
 from fpdf import FPDF 
 import time
 import os
+import json
 from PIL import Image
 import pytesseract # Resimden yazı okumak için
 pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
@@ -143,6 +144,37 @@ def pdf_olustur(baslik, icerik):
         return pdf.output(dest='S').encode('latin-1', 'ignore')
     except: return None
 
+def kelime_benzerlikleri(kelime):
+    """Yanlış yazılmış kelimeler için olası doğru hallerini üret"""
+    if not kelime:
+        return []
+    
+    kelime = kelime.lower().strip()
+    alternatifler = [kelime]  # Orijinal kelime
+    
+    # Yaygın yazım hataları için alternatifler
+    alternatifler.append(kelime.replace('c', 'k'))  # c -> k
+    alternatifler.append(kelime.replace('k', 'c'))  # k -> c
+    alternatifler.append(kelime.replace('ph', 'f'))  # ph -> f
+    alternatifler.append(kelime.replace('f', 'ph'))  # f -> ph
+    
+    # Çift harf kontrolleri
+    alternatifler.append(kelime.replace('tt', 't'))
+    alternatifler.append(kelime.replace('pp', 'p'))
+    
+    # İngilizce-Türkçe karakter dönüşümleri
+    alternatifler.append(kelime.replace('sh', 'ş'))
+    alternatifler.append(kelime.replace('ch', 'ç'))
+    
+    # Özel durum: Stephan -> Stephen (Hawking için)
+    if 'stephan' in kelime.lower():
+        alternatifler.append('stephen')
+    if 'stephen' in kelime.lower():
+        alternatifler.append('stephan')
+    
+    # Tekrarlanan alternatifleri temizle
+    return list(set(alternatifler))
+
 def site_tara_brave_style(url, sorgu, site_adi):
     try:
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Brave/120.0.0.0'}
@@ -190,8 +222,17 @@ def site_tara_brave_style(url, sorgu, site_adi):
         
         final = yabanci_karakter_temizle(' '.join(final.split()))
         
-        # İçerik doğrulama - aranan kelimeyi içeriyor mu?
-        if sorgu.lower() not in final.lower():
+        # İçerik doğrulama - aranan kelimeyi veya benzerini içeriyor mu?
+        icerik_kontrol = final.lower()
+        alternatifler = kelime_benzerlikleri(sorgu)
+        
+        kelime_bulundu = False
+        for alt in alternatifler:
+            if alt.lower() in icerik_kontrol:
+                kelime_bulundu = True
+                break
+        
+        if not kelime_bulundu:
             return (site_adi, None)
         
         return (site_adi, final) if len(final) > 100 else (site_adi, None)
@@ -326,11 +367,32 @@ else:
                     # tr.wiktionary.org kaldırıldı
                     siteler = [f"https://tr.wikipedia.org/wiki/{q_enc}", f"https://www.bilgiustam.com/?s={q_enc}", f"https://www.turkcebilgi.com/{q_enc}", f"https://sozluk.gov.tr/gts?ara={q_enc}", f"https://www.nedir.com/{q_enc}", f"https://www.biyografi.info/ara?k={q_enc}", f"https://islamansiklopedisi.org.tr/ara?q={q_enc}", f"https://dergipark.org.tr/tr/search?q={q_enc}", f"https://en.wikipedia.org/wiki/{q_enc}", f"https://www.britannica.com/search?query={q_enc}", f"https://www.worldhistory.org/search/?q={q_enc}", f"https://plato.stanford.edu/search/searcher.py?query={q_enc}", f"https://www.biyografya.com/arama?q={q_enc}", f"https://www.etimolojiturkce.com/arama/{q_enc}"]
                     bulunanlar = []
+                    
+                    # Kelime benzerliklerini kontrol et ve kullanıcıya bildir
+                    alternatifler = kelime_benzerlikleri(sorgu)
+                    if len(alternatifler) > 1:
+                        status.info(f"🔍 '{sorgu}' için alternatif aramalar: {', '.join(alternatifler)}")
+                    
                     for i, url in enumerate(siteler):
                         status.info(f"Tarama yapılıyor: {urllib.parse.urlparse(url).netloc} ({i+1}/14)")
                         p_bar.progress((i+1)/len(siteler))
+                        
+                        # Önce orijinal sorguyla dene
                         res = site_tara_brave_style(url, sorgu, f"Kaynak {i+1}: {urllib.parse.urlparse(url).netloc}")
-                        if res[1]: bulunanlar.append(res)
+                        
+                        # Eğer bulunamazsa alternatifleri dene
+                        if not res[1]:
+                            for alt in alternatifler:
+                                if alt != sorgu:  # Orijinal sorguyu tekrar deneme
+                                    alt_url = url.replace(urllib.parse.quote(sorgu), urllib.parse.quote(alt))
+                                    res = site_tara_brave_style(alt_url, alt, f"Kaynak {i+1}: {urllib.parse.urlparse(url).netloc} (alternatif: {alt})")
+                                    if res[1]:
+                                        status.success(f"✅ '{alt}' ile eşleşme bulundu!")
+                                        break
+                        
+                        if res[1]: 
+                            bulunanlar.append(res)
+                    
                     st.session_state.tum_kaynaklar = bulunanlar
                 elif m_secim == "Sözlük (TDK)":
                     p_bar.progress(50); 
